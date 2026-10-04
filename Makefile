@@ -3,7 +3,7 @@ TARGET = iphone:clang:16.5:15.0
 THEOS_PACKAGE_SCHEME = rootless
 include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = Importone
-Importone_FILES = Tweak.xm ImportActivity.m Shared/Bridge.m Shared/Validation.m
+Importone_FILES = Tweak.xm TonePicker.xm ImportActivity.m Shared/Bridge.m Shared/Validation.m
 Importone_CFLAGS = -fobjc-arc
 Importone_FRAMEWORKS = UIKit Foundation AVFoundation UniformTypeIdentifiers
 Importone_LIBRARIES = substrate

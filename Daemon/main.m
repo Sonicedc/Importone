@@ -3,16 +3,48 @@
 #import <dlfcn.h>
 #import <math.h>
 #import <unistd.h>
+#import <rootless.h>
 @interface TLToneManager : NSObject
 + (instancetype)sharedToneManager;
+- (NSArray *)_installedTones;
+- (NSString *)_deviceITunesRingtoneDirectory;
+- (NSString *)_deviceITunesRingtoneInformationPlist;
+- (id)_addToneToManifestAtPath:(NSString *)path metadata:(NSDictionary *)metadata fileName:(NSString *)filename mediaDirectory:(NSString *)directory;
+- (void)_reloadTonesAfterExternalChange;
 - (void)importTone:(NSData *)data metadata:(NSDictionary *)metadata completionBlock:(void (^)(BOOL))completion;
 @end
+static void IPUpdateCatalog(TLToneManager *manager) {
+    [manager _reloadTonesAfterExternalChange];
+    NSMutableArray *catalog = [NSMutableArray new];
+    for (id tone in [manager _installedTones]) {
+        NSString *name = [tone valueForKey:@"name"], *identifier = [tone valueForKey:@"identifier"];
+        if (!IPSafeName(name) || ![identifier isKindOfClass:NSString.class]) continue;
+        NSString *path = [@"/var/lib/ringtones" stringByAppendingPathComponent:[name stringByAppendingPathExtension:@"m4r"]];
+        if ([NSFileManager.defaultManager fileExistsAtPath:path]) [catalog addObject:@{@"name":name, @"identifier":identifier}];
+    }
+    [catalog sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b){ return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]]; }];
+    [catalog writeToFile:ROOT_PATH_NS(@"/var/mobile/Library/Importone/CustomTones.plist") atomically:YES];
+}
+static void IPRepairMetadata(TLToneManager *manager) {
+    NSString *manifest = [manager _deviceITunesRingtoneInformationPlist];
+    NSDictionary *entries = [NSDictionary dictionaryWithContentsOfFile:manifest][@"Ringtones"];
+    if (![entries isKindOfClass:NSDictionary.class]) return;
+    for (NSString *filename in entries) {
+        NSDictionary *entry = entries[filename];
+        if (![entry isKindOfClass:NSDictionary.class] || entry[@"Name"]) continue;
+        NSString *name = IPSafeName(entry[@"name"]);
+        NSString *source = name ? [@"/var/lib/ringtones" stringByAppendingPathComponent:[name stringByAppendingPathExtension:@"m4r"]] : nil;
+        if (!source || ![NSFileManager.defaultManager fileExistsAtPath:source]) continue;
+        NSMutableDictionary *metadata = [entry mutableCopy]; metadata[@"Name"] = name; [metadata removeObjectForKey:@"name"];
+        [manager _addToneToManifestAtPath:manifest metadata:metadata fileName:filename mediaDirectory:[manager _deviceITunesRingtoneDirectory]];
+    }
+}
 @interface IPService : NSObject
 @property NSMutableDictionary *jobs;
 @end
 @implementation IPService
 - (NSDictionary *)receive:(NSString *)message userInfo:(NSDictionary *)info {
-    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.4"};
+    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.5"};
     if ([message isEqual:@"status"]) return ([info[@"job"] isKindOfClass:NSString.class] ? self.jobs[info[@"job"]] : nil) ?: @{@"done":@YES, @"ok":@NO, @"error":@"Import job expired."};
     if (!IPEnabled()) return @{@"error":@"Importone is disabled."};
     NSString *name = IPSafeName(info[@"name"]); NSData *data = info[@"data"];
@@ -32,11 +64,17 @@
     if (![manager respondsToSelector:@selector(importTone:metadata:completionBlock:)]) { [fm removeItemAtPath:path error:nil]; return @{@"error":@"This iOS version does not expose the required ToneLibrary importer."}; }
     if (self.jobs.count >= 100) [self.jobs removeAllObjects];
     NSString *job = NSUUID.UUID.UUIDString; self.jobs[job] = @{@"done":@NO};
-    @try { [manager importTone:data metadata:@{@"name":name} completionBlock:^(BOOL imported){
+    @try { [manager importTone:data metadata:@{@"Name":name} completionBlock:^(BOOL imported){
         dispatch_async(dispatch_get_main_queue(), ^{
             BOOL ok = imported;
+            if (ok) {
+                IPUpdateCatalog(manager);
+                BOOL listed = NO;
+                for (NSDictionary *tone in [NSArray arrayWithContentsOfFile:ROOT_PATH_NS(@"/var/mobile/Library/Importone/CustomTones.plist")]) if ([tone[@"name"] isEqual:name]) { listed = YES; break; }
+                ok = listed;
+            }
             if (!ok) [fm removeItemAtPath:path error:nil];
-            self.jobs[job] = ok ? @{@"done":@YES, @"ok":@YES} : @{@"done":@YES, @"ok":@NO, @"error":@"ToneLibrary rejected this ringtone."};
+            self.jobs[job] = ok ? @{@"done":@YES, @"ok":@YES} : @{@"done":@YES, @"ok":@NO, @"error":@"iOS did not register a selectable ringtone. Please retry."};
         });
     }]; } @catch (NSException *exception) {
         [fm removeItemAtPath:path error:nil];
@@ -70,6 +108,8 @@ int main(int argc, char **argv) { @autoreleasepool {
         }
         return 1;
     }
+    TLToneManager *manager = [NSClassFromString(@"TLToneManager") sharedToneManager];
+    @try { IPRepairMetadata(manager); IPUpdateCatalog(manager); } @catch (NSException *exception) { NSLog(@"Importone metadata migration failed: %@", exception.reason); }
     IPService *service = [IPService new]; service.jobs = [NSMutableDictionary new];
     IPMessageCenter *center = IPCenter(); if (!center) return 1;
     [center runServerOnCurrentThread];

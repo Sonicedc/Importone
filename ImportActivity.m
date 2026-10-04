@@ -20,16 +20,19 @@
 @implementation IPImportController
 - (void)viewDidLoad {
     [super viewDidLoad]; self.modalInPresentation = YES;
+    self.view.backgroundColor = [UIColor.blackColor colorWithAlphaComponent:0.12];
     UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial]];
-    blur.frame = self.view.bounds; blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    blur.translatesAutoresizingMaskIntoConstraints = NO;
+    blur.layer.cornerRadius = 24; blur.layer.cornerCurve = kCACornerCurveContinuous; blur.clipsToBounds = YES;
     [self.view addSubview:blur];
+    [NSLayoutConstraint activateConstraints:@[[blur.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor], [blur.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor], [blur.widthAnchor constraintEqualToConstant:220], [blur.heightAnchor constraintEqualToConstant:220]]];
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    self.step = [UILabel new]; self.step.textAlignment = NSTextAlignmentCenter; self.step.numberOfLines = 0;
+    self.step = [UILabel new]; self.step.textAlignment = NSTextAlignmentCenter; self.step.numberOfLines = 3; self.step.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
     self.progress = [UIProgressView new];
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[self.spinner, self.step, self.progress]];
     stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 20; stack.translatesAutoresizingMaskIntoConstraints = NO;
     [blur.contentView addSubview:stack];
-    [NSLayoutConstraint activateConstraints:@[[stack.centerXAnchor constraintEqualToAnchor:blur.contentView.centerXAnchor], [stack.centerYAnchor constraintEqualToAnchor:blur.contentView.centerYAnchor], [stack.widthAnchor constraintEqualToConstant:260]]];
+    [NSLayoutConstraint activateConstraints:@[[stack.centerXAnchor constraintEqualToAnchor:blur.contentView.centerXAnchor], [stack.centerYAnchor constraintEqualToAnchor:blur.contentView.centerYAnchor], [stack.widthAnchor constraintEqualToConstant:176]]];
     [self.spinner startAnimating]; self.step.text = @"Checking audio…";
 }
 - (void)viewDidAppear:(BOOL)animated {
@@ -200,7 +203,7 @@
     }
 }
 - (UIViewController *)activityViewController {
-    self.controller = [IPImportController new]; self.controller.source = self.source; self.controller.provider = self.provider;
+    self.controller = [IPImportController new]; self.controller.modalPresentationStyle = UIModalPresentationOverFullScreen; self.controller.source = self.source; self.controller.provider = self.provider;
     __weak IPImportActivity *weakSelf = self;
     self.controller.finished = ^(BOOL success){ [weakSelf activityDidFinish:success]; };
     return self.controller;
