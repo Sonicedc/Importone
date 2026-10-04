@@ -1,4 +1,4 @@
-[Sonicedc](https://sonicedc.github.io) · [GitHub Repository](https://github.com/Sonicedc/Importone)
+[Sileo Repo](https://sonicedc.github.io)
 
 # Importone
 
