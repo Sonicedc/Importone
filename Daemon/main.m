@@ -11,6 +11,8 @@
 - (NSString *)_deviceITunesRingtoneInformationPlist;
 - (id)_addToneToManifestAtPath:(NSString *)path metadata:(NSDictionary *)metadata fileName:(NSString *)filename mediaDirectory:(NSString *)directory;
 - (void)_reloadTonesAfterExternalChange;
+- (void)removeImportedToneWithIdentifier:(NSString *)identifier;
+- (BOOL)toneWithIdentifierIsValid:(NSString *)identifier;
 - (void)importTone:(NSData *)data metadata:(NSDictionary *)metadata completionBlock:(void (^)(BOOL))completion;
 @end
 static void IPUpdateCatalog(TLToneManager *manager) {
@@ -39,13 +41,64 @@ static void IPRepairMetadata(TLToneManager *manager) {
         [manager _addToneToManifestAtPath:manifest metadata:metadata fileName:filename mediaDirectory:[manager _deviceITunesRingtoneDirectory]];
     }
 }
+static NSDictionary *IPManageTone(NSString *message, NSDictionary *info) {
+    TLToneManager *manager = [NSClassFromString(@"TLToneManager") sharedToneManager];
+    IPUpdateCatalog(manager);
+    NSArray *catalog = [NSArray arrayWithContentsOfFile:ROOT_PATH_NS(@"/var/mobile/Library/Importone/CustomTones.plist")] ?: @[];
+    if ([message isEqual:@"list"]) return @{@"ok":@YES, @"tones":catalog};
+    NSDictionary *owned;
+    for (NSDictionary *tone in catalog) if ([tone[@"identifier"] isEqual:info[@"identifier"]]) { owned = tone; break; }
+    if (!owned) return @{@"error":@"This custom ringtone no longer exists. Refresh the list and try again."};
+    NSString *oldName = owned[@"name"], *identifier = owned[@"identifier"];
+    NSString *source = [@"/var/lib/ringtones" stringByAppendingPathComponent:[oldName stringByAppendingPathExtension:@"m4r"]];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if ([message isEqual:@"remove"]) {
+        [manager removeImportedToneWithIdentifier:identifier];
+        [manager _reloadTonesAfterExternalChange];
+        if ([manager toneWithIdentifierIsValid:identifier]) return @{@"error":@"iOS could not remove the ringtone. Please try again."};
+        NSError *error = nil;
+        BOOL removed = [fm removeItemAtPath:source error:&error];
+        IPUpdateCatalog(manager);
+        return removed ? @{@"ok":@YES} : @{@"error":error.localizedDescription ?: @"Could not remove the stored audio file."};
+    }
+    NSString *name = IPSafeName(info[@"name"]);
+    if (!name) return @{@"error":@"Use a name of 1–80 characters without slashes, colons, or control characters."};
+    if ([name isEqual:oldName]) return @{@"ok":@YES};
+    for (id tone in [manager _installedTones]) if ([[tone valueForKey:@"name"] caseInsensitiveCompare:name] == NSOrderedSame) return @{@"error":@"A ringtone with this name already exists."};
+    NSString *manifest = [manager _deviceITunesRingtoneInformationPlist];
+    NSDictionary *entries = [NSDictionary dictionaryWithContentsOfFile:manifest][@"Ringtones"];
+    NSString *filename; NSDictionary *original;
+    for (NSString *key in entries) {
+        NSDictionary *entry = entries[key];
+        if ([entry isKindOfClass:NSDictionary.class] && [[@"itunes:" stringByAppendingString:entry[@"GUID"] ?: @""] isEqual:identifier]) { filename = key; original = entry; break; }
+    }
+    if (!filename) return @{@"error":@"iOS could not find the ringtone registration."};
+    NSString *destination = [@"/var/lib/ringtones" stringByAppendingPathComponent:[name stringByAppendingPathExtension:@"m4r"]];
+    NSError *error = nil;
+    if (![fm moveItemAtPath:source toPath:destination error:&error]) return @{@"error":@"A file with this name already exists, or the ringtone could not be renamed."};
+    BOOL renamed = NO;
+    @try {
+        NSMutableDictionary *metadata = [original mutableCopy]; metadata[@"Name"] = name;
+        [manager _addToneToManifestAtPath:manifest metadata:metadata fileName:filename mediaDirectory:[manager _deviceITunesRingtoneDirectory]];
+        NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:manifest][@"Ringtones"][filename];
+        renamed = [saved[@"Name"] isEqual:name] && [saved[@"GUID"] isEqual:original[@"GUID"]];
+    } @catch (NSException *exception) { NSLog(@"Importone rename failed: %@", exception.reason); }
+    if (!renamed) {
+        [fm moveItemAtPath:destination toPath:source error:nil];
+        [manager _addToneToManifestAtPath:manifest metadata:original fileName:filename mediaDirectory:[manager _deviceITunesRingtoneDirectory]];
+    }
+    IPUpdateCatalog(manager);
+    return renamed ? @{@"ok":@YES} : @{@"error":@"iOS could not rename the ringtone. Its original name was restored."};
+}
 @interface IPService : NSObject
 @property NSMutableDictionary *jobs;
 @end
 @implementation IPService
 - (NSDictionary *)receive:(NSString *)message userInfo:(NSDictionary *)info {
-    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.5"};
+    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.6"};
     if ([message isEqual:@"status"]) return ([info[@"job"] isKindOfClass:NSString.class] ? self.jobs[info[@"job"]] : nil) ?: @{@"done":@YES, @"ok":@NO, @"error":@"Import job expired."};
+    if ([@[@"list", @"rename", @"remove"] containsObject:message]) return IPManageTone(message, info);
+    if (![message isEqual:@"import"]) return @{@"error":@"Unknown request."};
     if (!IPEnabled()) return @{@"error":@"Importone is disabled."};
     NSString *name = IPSafeName(info[@"name"]); NSData *data = info[@"data"];
     if (!name || ![data isKindOfClass:NSData.class] || !data.length || data.length > 10 * 1024 * 1024) return @{@"error":@"Invalid ringtone or ringtone exceeds 10 MB."};
@@ -96,6 +149,13 @@ int main(int argc, char **argv) { @autoreleasepool {
         NSDictionary *reply = [IPCenter() sendMessageAndReceiveReplyName:@"ping" userInfo:@{}];
         printf("%s\n", [reply.description UTF8String] ?: "No service reply"); return [reply[@"ok"] boolValue] ? 0 : 1;
     }
+    if (argc >= 3 && !strcmp(argv[1], "--manage")) {
+        NSMutableDictionary *info = [NSMutableDictionary new];
+        if (argc >= 4) info[@"identifier"] = [NSString stringWithUTF8String:argv[3]];
+        if (argc >= 5) info[@"name"] = [NSString stringWithUTF8String:argv[4]];
+        NSDictionary *reply = [IPCenter() sendMessageAndReceiveReplyName:[NSString stringWithUTF8String:argv[2]] userInfo:info];
+        printf("%s\n", reply.description.UTF8String ?: "No reply"); return [reply[@"ok"] boolValue] ? 0 : 1;
+    }
     if (argc == 4 && !strcmp(argv[1], "--import")) {
         NSData *data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:argv[2]]];
         if (!data) return 1;
@@ -116,5 +176,6 @@ int main(int argc, char **argv) { @autoreleasepool {
     [center registerForMessageName:@"ping" target:service selector:@selector(receive:userInfo:)];
     [center registerForMessageName:@"import" target:service selector:@selector(receive:userInfo:)];
     [center registerForMessageName:@"status" target:service selector:@selector(receive:userInfo:)];
+    for (NSString *message in @[@"list", @"rename", @"remove"]) [center registerForMessageName:message target:service selector:@selector(receive:userInfo:)];
     [[NSRunLoop currentRunLoop] run];
 } return 0; }

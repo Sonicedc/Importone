@@ -3,6 +3,15 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <dlfcn.h>
 #import <objc/runtime.h>
+@interface NSObject (IPProbePreferences)
+- (NSArray *)specifiers;
+- (id)propertyForKey:(NSString *)key;
+- (id)specifierAtIndexPath:(NSIndexPath *)path;
+- (UITableView *)table;
+- (void)openSounds;
+- (BOOL)tableView:(UITableView *)table canEditRowAtIndexPath:(NSIndexPath *)path;
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)table trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path;
+@end
 @interface TKTonePickerController : NSObject
 - (instancetype)initWithAlertType:(long long)type;
 - (NSInteger)numberOfSections;
@@ -22,6 +31,12 @@
 @end
 @interface IPShareConfiguration : NSProxy
 @property (nonatomic, strong) id<UIActivityItemsConfigurationReading> original;
+@end
+// A command-line probe has no visible window for animated navigation transitions.
+@interface IPProbeNavigation : UINavigationController
+@end
+@implementation IPProbeNavigation
+- (void)pushViewController:(UIViewController *)controller animated:(BOOL)animated { [super pushViewController:controller animated:NO]; }
 @end
 int main(void) { setbuf(stdout,NULL); @autoreleasepool {
     printf("Share controller bundle: %s\n", [NSBundle bundleForClass:UIActivityViewController.class].bundleIdentifier.UTF8String);
@@ -55,6 +70,26 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
     UIViewController *settings = [preferences.principalClass new];
     @try { [settings loadViewIfNeeded]; } @catch (NSException *exception) { printf("Settings view error: %s\n", exception.reason.UTF8String); return 7; }
     if (!settings.isViewLoaded) { puts("Settings view did not load"); return 8; }
+    BOOL management = NO;
+    UITableView *table = [(id)settings table];
+    for (NSInteger section = 0; section < table.numberOfSections; section++) {
+        for (NSInteger row = 0; row < [table numberOfRowsInSection:section]; row++) {
+            NSIndexPath *path = [NSIndexPath indexPathForRow:row inSection:section];
+            id specifier = [(id)settings specifierAtIndexPath:path];
+            if (![specifier propertyForKey:@"importoneTone"]) continue;
+            UISwipeActionsConfiguration *actions = [(id)settings tableView:table trailingSwipeActionsConfigurationForRowAtIndexPath:path];
+            if (![(id)settings tableView:table canEditRowAtIndexPath:path]) { puts("Swipe editing unavailable"); return 16; }
+            if (actions.actions.count != 2 || actions.performsFirstActionWithFullSwipe || ![actions.actions[0].title isEqual:@"Remove"] || ![actions.actions[1].title isEqual:@"Rename"]) { puts("Management actions invalid"); return 14; }
+            management = YES;
+        }
+    }
+    if (!management) { puts("Custom tone preferences row missing"); return 15; }
+    puts("PASS: preferences custom tone rows with Rename/Remove swipe actions.");
+    UINavigationController *navigation = [[IPProbeNavigation alloc] initWithRootViewController:settings];
+    [navigation loadViewIfNeeded];
+    [(id)settings openSounds];
+    if (![NSStringFromClass(navigation.topViewController.class) isEqual:@"SHSSoundsPrefController"] || !navigation.topViewController.isViewLoaded) { puts("Native Sounds shortcut failed"); return 17; }
+    puts("PASS: shortcut loads and pushes native Sounds & Haptics controller.");
     for (NSNumber *alert in @[@1, @2, @3, @4, @5, @6]) {
         TKTonePickerController *picker = [[NSClassFromString(@"TKTonePickerController") alloc] initWithAlertType:alert.longLongValue];
         BOOL found = NO;

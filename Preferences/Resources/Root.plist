@@ -32,6 +32,28 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
+			<string>Custom Ringtones</string>
+			<key>id</key>
+			<string>CustomTones</string>
+			<key>footerText</key>
+			<string>Swipe left on a tone to rename or remove it. Set your ringtone or alert tone in the native Settings → Sounds &amp; Haptics page.</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSButtonCell</string>
+			<key>label</key>
+			<string>Open Sounds &amp; Haptics</string>
+			<key>action</key>
+			<string>openSounds</string>
+			<key>id</key>
+			<string>OpenSounds</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>Credits</string>
+			<key>id</key>
 			<string>Credits</string>
 		</dict>
 		<dict>
@@ -76,7 +98,7 @@
 			<key>footerText</key>
 			<string>© 2026 Importone. All rights reserved.</string>
 			<key>label</key>
-			<string>Importone 0.1.5</string>
+			<string>Importone 0.1.6</string>
 		</dict>
 	</array>
 	<key>title</key>

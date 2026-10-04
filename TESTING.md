@@ -23,3 +23,11 @@ Build/package verification on the development host does not substitute for these
 ## Non-presenting on-device UI integration probe
 
 `tests/UIProbe.m` is built separately from the package and verifies the activity accepts an audio URL, rejects a PDF, accepts an audio item provider, appears in a modern Share Sheet configuration, loads the actual Settings view, checks the 220-point rounded progress card, and verifies native custom-tone section rows and selection for six alert types. It does not present UI or replace the visual acceptance checks above.
+
+## Custom tone management
+
+- In Importone preferences, swipe left or tap a custom tone to rename or remove it. Full swipe must not delete a tone. Confirm that removal requires confirmation.
+- Rename a disposable imported tone; verify its native identifier stays the same and its name updates in the native picker. Reject duplicate names and unsafe paths.
+- Remove the disposable tone; verify both its native registration and stored audio disappear, while other tones remain.
+- Use Open Sounds & Haptics; verify the native settings controller opens with its ringtone and alert-tone links.
+- Run the on-device UI probe to check actual preference rows, swipe configurations, and native shortcut loading.

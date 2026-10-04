@@ -16,8 +16,8 @@ importoned_INSTALL_PATH = /usr/libexec
 importoned_CODESIGN_FLAGS = -SDaemon/entitlements.plist
 include $(THEOS_MAKE_PATH)/tool.mk
 BUNDLE_NAME = ImportonePrefs
-ImportonePrefs_FILES = Preferences/RootListController.m Preferences/CreditCell.m
-ImportonePrefs_CFLAGS = -fobjc-arc
+ImportonePrefs_FILES = Preferences/RootListController.m Preferences/CreditCell.m Shared/Bridge.m Shared/Validation.m
+ImportonePrefs_CFLAGS = -fobjc-arc -DIPMessageCenter=IPPreferencesMessageCenter
 ImportonePrefs_FRAMEWORKS = UIKit Foundation
 ImportonePrefs_PRIVATE_FRAMEWORKS = Preferences
 ImportonePrefs_LDFLAGS = -F$(THEOS_PROJECT_DIR)/Frameworks
