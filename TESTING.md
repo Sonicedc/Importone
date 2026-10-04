@@ -56,9 +56,11 @@ Verified 0.3.0 on iPhone 14 Pro Max, iOS 16.2, Dopamine 3.0.9, ElleKit 1.2 and P
 
 ## Preferences playback controls
 
-- Each custom ringtone has a 44-point play button beside its name. The button previews the sound; tapping the name continues to show Rename, Crop and Remove.
+- Each custom ringtone has a 44-point play button to the left of its name. The button previews the sound; tapping the name continues to show Rename, Crop and Remove.
 - Play, pause and resume a tone. Starting another tone stops the first. Natural completion restores the play glyph.
 - Leaving Importone, backgrounding Settings, starting an edit, or receiving an audio interruption stops preview playback. Canceling an in-flight load must prevent delayed playback.
 - Run `tests/PreviewProbe.m` with two disposable silent tones named `ImportonePreviewCheckA` and `ImportonePreviewCheckB`. It tests the actual button, playback lifecycle, race cancellation, audio-session restoration and missing-tone errors, then removes only those test tones.
 
 Verified 0.3.1 on iPhone 14 Pro Max / iOS 16.2: PreviewProbe and UIProbe passed. ToneKit's native Default alias uses a nil selection and a resolved tone label; the UI probe checks that representation separately from explicit tone identifiers.
+
+Verified 0.3.2 on iPhone 14 Pro Max / iOS 16.2: UIProbe checks that the preview control is left of the text without overlap or a trailing accessory; PreviewProbe passed playback and cleanup using the left control.

@@ -1,6 +1,6 @@
 Package: com.sonicedc.importone
 Name: Importone
-Version: 0.3.1
+Version: 0.3.2
 Architecture: iphoneos-arm64
 Description: Import audio from the share sheet as custom ringtones, entirely on-device.
 Maintainer: Sonicedc

@@ -86,7 +86,9 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
             toneSection = section;
             UITableViewCell *cell = [(id)settings tableView:table cellForRowAtIndexPath:path];
             [plainCells addObject:cell];
-            if (![cell.accessoryView isKindOfClass:UIButton.class] || cell.accessoryView.bounds.size.width<44 || ![cell.accessoryView.accessibilityIdentifier hasPrefix:@"importone.preview."]) { puts("Ringtone preview button missing"); return 20; }
+            cell.frame=CGRectMake(0,0,350,44); [cell layoutIfNeeded];
+            UIButton *preview=(id)[cell.contentView viewWithTag:6881];
+            if (![preview isKindOfClass:UIButton.class] || preview.bounds.size.width<44 || ![preview.accessibilityIdentifier hasPrefix:@"importone.preview."] || CGRectGetMaxX(preview.frame)>CGRectGetMinX(cell.textLabel.frame) || cell.accessoryView) { puts("Left ringtone preview button missing or overlapping text"); return 20; }
             UISwipeActionsConfiguration *actions = [(id)settings tableView:table trailingSwipeActionsConfigurationForRowAtIndexPath:path];
             if (![(id)settings tableView:table canEditRowAtIndexPath:path]) { puts("Swipe editing unavailable"); return 16; }
             if (actions.actions.count != 3 || actions.performsFirstActionWithFullSwipe || ![actions.actions[0].title isEqual:@"Remove"] || ![actions.actions[1].title isEqual:@"Crop"] || ![actions.actions[2].title isEqual:@"Rename"]) { puts("Management actions invalid"); return 14; }

@@ -24,11 +24,11 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
     Class settingsClass=objc_allocateClassPair(NSClassFromString(@"IPRootListController"),"IPPreviewProbeSettings",0);
     class_addMethod(settingsClass,@selector(presentViewController:animated:completion:),(IMP)capture,"v@:@B@?"); objc_registerClassPair(settingsClass);
     UIViewController *settings=[bundle.principalClass new]; [settings loadViewIfNeeded]; object_setClass(settings,settingsClass); settings.view.frame=CGRectMake(0,0,390,844); [settings.view layoutIfNeeded];
-    UITableView *table=[(id)settings table]; UIButton *button;
+    UITableView *table=[(id)settings table]; UIButton *button; UITableViewCell *previewCell;
     for (NSInteger section=0;section<table.numberOfSections;section++) for (NSInteger row=0;row<[table numberOfRowsInSection:section];row++) {
         NSIndexPath *path=[NSIndexPath indexPathForRow:row inSection:section];
         NSDictionary *tone=[[(id)settings specifierAtIndexPath:path] propertyForKey:@"importoneTone"];
-        if ([tone[@"identifier"] isEqual:tones[0][@"identifier"]]) button=(id)[(id)settings tableView:table cellForRowAtIndexPath:path].accessoryView;
+        if ([tone[@"identifier"] isEqual:tones[0][@"identifier"]]) { previewCell=[table cellForRowAtIndexPath:path] ?: [(id)settings tableView:table cellForRowAtIndexPath:path]; button=(id)[previewCell.contentView viewWithTag:6881]; }
     }
     NSInteger result=0;
     NSString *category=AVAudioSession.sharedInstance.category,*mode=AVAudioSession.sharedInstance.mode;
@@ -38,7 +38,7 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
             printf("Preview control: %s, label %s, image %s, sections %ld\n",NSStringFromClass(button.class).UTF8String ?: "nil",button.accessibilityLabel.UTF8String ?: "nil",[button imageForState:UIControlStateNormal] ? "yes" : "no",(long)table.numberOfSections);
             if (![button isKindOfClass:UIButton.class] || ![button.accessibilityLabel hasPrefix:@"Play"] || ![button imageForState:UIControlStateNormal]) { puts("Play glyph missing"); result=3; break; }
             [button sendActionsForControlEvents:UIControlEventTouchUpInside];
-            if (!waitFor(^BOOL{ return player(settings).playing; },10) || presented) { puts("Play button did not preview independently of row actions"); result=4; break; }
+            if (!waitFor(^BOOL{ return player(settings).playing; },10) || presented) { printf("Play button failed: player %s, identifier %s, presented %s, message %s, targets %s\n",player(settings).playing ? "playing" : "stopped",[[settings valueForKey:@"previewIdentifier"] UTF8String] ?: "nil",presented.title.UTF8String ?: "nil",[presented isKindOfClass:UIAlertController.class] ? [(UIAlertController *)presented message].UTF8String ?: "nil" : "none",button.allTargets.description.UTF8String); result=4; break; }
             AVAudioPlayer *first=player(settings); first.volume=0; pump(0.1);
             [button sendActionsForControlEvents:UIControlEventTouchUpInside]; double pausedAt=first.currentTime;
             if (first.playing || player(settings)!=first) { puts("Pause did not preserve player"); result=5; break; }
@@ -66,6 +66,7 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
         [(id)settings stopTonePreview];
         for (NSDictionary *tone in tones) if (![[IPCenter() sendMessageAndReceiveReplyName:@"remove" userInfo:@{@"identifier":tone[@"identifier"]}][@"ok"] boolValue]) result=17;
     }
+    (void)previewCell;
     if (!result) puts("PASS: play glyph control, independent tap, pause/resume, exclusive playback, natural completion, canceled loads, page dismissal, backgrounding, interruption, session restoration and missing-tone errors. Disposable tones removed.");
     return (int)result;
 } }

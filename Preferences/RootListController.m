@@ -1,9 +1,31 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
+#import <Preferences/PSTableCell.h>
 #import "../Shared/Bridge.h"
 #import <rootless.h>
 #import <dlfcn.h>
 #import "../CropController.h"
+@interface IPPreviewToneCell : PSTableCell
+@property UIButton *previewButton;
+@end
+@implementation IPPreviewToneCell
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)identifier specifier:(PSSpecifier *)specifier {
+    if ((self=[super initWithStyle:style reuseIdentifier:identifier specifier:specifier])) {
+        self.previewButton=[UIButton buttonWithType:UIButtonTypeSystem];
+        self.previewButton.tag=6881;
+        [self.contentView addSubview:self.previewButton];
+    }
+    return self;
+}
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat left=MAX(0,self.contentView.layoutMargins.left-8);
+    self.previewButton.frame=CGRectMake(left,(self.contentView.bounds.size.height-44)/2,44,44);
+    CGRect text=self.textLabel.frame; text.origin.x=CGRectGetMaxX(self.previewButton.frame)+4;
+    text.size.width=MAX(0,self.contentView.bounds.size.width-self.contentView.layoutMargins.right-text.origin.x);
+    self.textLabel.frame=text;
+}
+@end
 @interface IPRootListController : PSListController <AVAudioPlayerDelegate>
 @property (nonatomic) BOOL busy;
 @property UIView *cropHUD;
@@ -32,6 +54,7 @@
                 row.buttonAction = @selector(manageTone:);
                 row->action = @selector(manageTone:);
                 [row setProperty:tone forKey:@"importoneTone"];
+                [row setProperty:IPPreviewToneCell.class forKey:@"cellClass"];
                 [items insertObject:row atIndex:position++];
             }
         }
@@ -56,7 +79,7 @@
     for (UITableViewCell *cell in self.table.visibleCells) {
         NSIndexPath *path=[self.table indexPathForCell:cell];
         NSDictionary *tone=path ? [[self specifierAtIndexPath:path] propertyForKey:@"importoneTone"] : nil;
-        if (tone && [cell.accessoryView isKindOfClass:UIButton.class]) [self configurePreviewButton:(id)cell.accessoryView tone:tone];
+        if (tone && [cell isKindOfClass:IPPreviewToneCell.class]) [self configurePreviewButton:((IPPreviewToneCell *)cell).previewButton tone:tone];
     }
 }
 - (void)restorePreviewSession {
@@ -257,11 +280,12 @@
         cell.textLabel.textAlignment = NSTextAlignmentNatural;
         NSDictionary *tone=[specifier propertyForKey:@"importoneTone"];
         if (tone) {
-            UIButton *play=[UIButton buttonWithType:UIButtonTypeSystem]; play.frame=CGRectMake(0,0,44,44);
-            [self configurePreviewButton:play tone:tone];
+            IPPreviewToneCell *toneCell=(IPPreviewToneCell *)cell;
+            [self configurePreviewButton:toneCell.previewButton tone:tone];
             __weak IPRootListController *weakSelf=self;
-            [play addAction:[UIAction actionWithHandler:^(UIAction *action){ [weakSelf previewTone:tone]; }] forControlEvents:UIControlEventTouchUpInside];
-            cell.accessoryView=play;
+            [toneCell.previewButton removeActionForIdentifier:@"importone.preview" forControlEvents:UIControlEventTouchUpInside];
+            [toneCell.previewButton addAction:[UIAction actionWithTitle:@"" image:nil identifier:@"importone.preview" handler:^(UIAction *action){ [weakSelf previewTone:tone]; }] forControlEvents:UIControlEventTouchUpInside];
+            [toneCell setNeedsLayout];
         }
     }
     return cell;
