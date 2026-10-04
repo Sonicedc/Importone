@@ -88,7 +88,7 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
             [plainCells addObject:cell];
             UISwipeActionsConfiguration *actions = [(id)settings tableView:table trailingSwipeActionsConfigurationForRowAtIndexPath:path];
             if (![(id)settings tableView:table canEditRowAtIndexPath:path]) { puts("Swipe editing unavailable"); return 16; }
-            if (actions.actions.count != 2 || actions.performsFirstActionWithFullSwipe || ![actions.actions[0].title isEqual:@"Remove"] || ![actions.actions[1].title isEqual:@"Rename"]) { puts("Management actions invalid"); return 14; }
+            if (actions.actions.count != 3 || actions.performsFirstActionWithFullSwipe || ![actions.actions[0].title isEqual:@"Remove"] || ![actions.actions[1].title isEqual:@"Crop"] || ![actions.actions[2].title isEqual:@"Rename"]) { puts("Management actions invalid"); return 14; }
             management = YES;
         }
     }

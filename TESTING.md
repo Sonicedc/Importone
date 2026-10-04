@@ -10,7 +10,7 @@ Record device, iOS version, jailbreak version, loader, and Dopamine version for 
 - Confirm registered tones appear in Settings, preview correctly, and play on a real incoming call after locking the device and after a userspace reboot/re-jailbreak.
 - Rename with Unicode, whitespace, an empty name, slash, colon, control characters, and over 80 characters. Verify invalid names cause no writes outside the ringtone directory.
 - Import an existing name twice, including simultaneously from two apps. Verify the original is never replaced.
-- Try a WAV/MP3 renamed to M4R, corrupt audio, DRM audio, video, zero-byte input, zero/indefinite duration, 41-second audio, >100 MB input, and >10 MB M4R output. Verify clear errors and cleanup.
+- Try a WAV/MP3 renamed to M4R, corrupt audio, DRM audio, video, zero-byte input, zero/indefinite duration, >100 MB input, and >10 MB M4R output. Verify clear errors and cleanup. Audio longer than 40 seconds should open the crop editor.
 - Import from an iCloud-backed Files item to check coordinated reads and security-scoped access.
 - Cancel rename and check temporary files are removed.
 - Stop the daemon : verify a clear service-unavailable error.
@@ -26,7 +26,7 @@ Build/package verification on the development host does not substitute for these
 
 ## Custom tone management
 
-- In Importone preferences, swipe left or tap a custom tone to rename or remove it. Full swipe must not delete a tone. Confirm that removal requires confirmation.
+- In Importone preferences, swipe left or tap a custom tone to rename, crop, or remove it. Full swipe must not delete a tone. Confirm that removal requires confirmation.
 - Rename a disposable imported tone; verify its native identifier stays the same and its name updates in the native picker. Reject duplicate names and unsafe paths.
 - Remove the disposable tone; verify both its native registration and stored audio disappear, while other tones remain.
 - Use Open Sounds & Haptics; verify the native settings controller opens with its ringtone and alert-tone links.
@@ -41,7 +41,15 @@ Build/package verification on the development host does not substitute for these
 ## Waveform cropping
 
 - Share audio longer than 40 seconds, including an existing .m4r. The crop sheet must open before naming the tone. Short audio keeps the direct import flow.
-- Swipe the waveform to move a fixed 40-second range. Verify both ends stop at the source boundaries. Hold either bracket for an 8-second precision view, drag to fine-tune, and release to zoom out.
+- Swipe the waveform to move the selection. The cached audio envelope must stay stable while scrolling. Drag either bracket to resize the selection from 0.25 seconds (or the full source length for shorter files) up to 40 seconds. Verify source bounds and the maximum length. Hold either bracket for a precision view, drag to fine-tune that endpoint, and release to zoom out.
 - Preview the selection; verify it stops at the end, stops when the selection moves, and stops on cancel or Use Selection.
-- Run `tests/CropProbe.m` with synthetic long audio. It checks the actual long-file handoff, decoded peaks, both gesture mappings, muted preview, export range and decoded duration, rename handoff, and cancellation cleanup. Test WAV and .m4r at normal and low sample rates.
+- Run `tests/CropProbe.m` with synthetic long audio. It checks the actual long-file handoff, decoded peaks, cached path identity, both endpoint gesture mappings, shorter selection, muted preview, export range and decoded duration, rename handoff, and cancellation cleanup. Test WAV and .m4r at normal and low sample rates.
 - AAC container duration can differ slightly from the decoded sample duration at low sample rates. Check decoded duration and keep the native asset duration within the service limit.
+
+## Cropping existing tones
+
+- Tap a tone or swipe left and choose Crop. The same waveform editor must open, including for tones shorter than 40 seconds. Save Crop replaces the audio; Cancel preserves it.
+- Run `tests/EditProbe.m` against a disposable `ImportoneEditCheck` tone. It exercises the actual preferences editor, cancellation, a six-second save, both audio copies, native identifier/name preservation, and an existing sound assignment. It rejects stale and invalid replacement data, restores the test assignment, and removes its disposable tone.
+- Keep the original files until both replacement files have been prepared and validated. A failed save must restore both originals.
+
+Verified 0.3.0 on iPhone 14 Pro Max, iOS 16.2, Dopamine 3.0.9, ElleKit 1.2 and PreferenceLoader 2.2.8: CropProbe, UIProbe and EditProbe passed. Manual feel and real-call playback still require user verification.

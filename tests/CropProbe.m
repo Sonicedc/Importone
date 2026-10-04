@@ -25,10 +25,12 @@ static BOOL waitFor(BOOL (^condition)(void), NSTimeInterval timeout) {
 @interface IPProbePan : UIPanGestureRecognizer
 @property UIGestureRecognizerState probeState;
 @property CGPoint probeTranslation;
+@property CGPoint probeLocation;
 @end
 @implementation IPProbePan
 - (UIGestureRecognizerState)state { return self.probeState; }
 - (CGPoint)translationInView:(UIView *)view { return self.probeTranslation; }
+- (CGPoint)locationInView:(UIView *)view { return self.probeLocation; }
 @end
 @interface IPProbeHold : UILongPressGestureRecognizer
 @property UIGestureRecognizerState probeState;
@@ -72,25 +74,37 @@ int main(int argc,char **argv) { setbuf(stdout,NULL); @autoreleasepool {
     [wave setSelectionStart:-10]; if (wave.start!=0) return 6;
     [wave setSelectionStart:10000]; if (fabs(wave.start-(wave.duration-40))>0.001) return 7;
     [wave setSelectionStart:10];
-    IPProbePan *pan=[IPProbePan new]; pan.probeState=UIGestureRecognizerStateBegan; [wave pan:pan];
+    [wave layoutIfNeeded]; CAShapeLayer *cached=[wave valueForKey:@"waveLayer"]; CGPathRef cachedPath=cached.path;
+    IPProbePan *pan=[IPProbePan new]; pan.probeLocation=CGPointMake(wave.bounds.size.width/2,85); pan.probeState=UIGestureRecognizerStateBegan; [wave pan:pan];
     pan.probeState=UIGestureRecognizerStateChanged; pan.probeTranslation=CGPointMake(-wave.bounds.size.width/8,0); [wave pan:pan];
     if (fabs(wave.start-20)>0.001) { puts("Waveform drag mapping invalid"); return 8; }
+    pan.probeState=UIGestureRecognizerStateEnded; [wave pan:pan]; [wave layoutIfNeeded];
+    if (cached.path!=cachedPath) { puts("Scrubbing rebuilt the waveform"); return 21; }
     for (NSNumber *edge in @[@0,@1]) {
-        [wave setSelectionStart:10]; IPProbeHold *hold=[IPProbeHold new];
+        [wave setSelectionFrom:10 to:50]; IPProbeHold *hold=[IPProbeHold new];
         hold.probeState=UIGestureRecognizerStateBegan; hold.probeLocation=CGPointMake(wave.bounds.size.width*(edge.boolValue ? 0.75 : 0.25),85); [wave hold:hold];
         if (!wave.zoomed || wave.zoomEdge!=edge.integerValue) return 9;
-        hold.probeState=UIGestureRecognizerStateChanged; hold.probeLocation=CGPointMake(hold.probeLocation.x-wave.bounds.size.width/8,85); [wave hold:hold];
-        if (fabs(wave.start-11)>0.001) { puts("Bracket precision zoom mapping invalid"); return 10; }
+        hold.probeState=UIGestureRecognizerStateChanged; hold.probeLocation=CGPointMake(hold.probeLocation.x+(edge.boolValue ? -1 : 1)*wave.bounds.size.width/8,85); [wave hold:hold];
+        if (fabs((edge.boolValue ? wave.end : wave.start)-(edge.boolValue ? 49 : 11))>0.001) { puts("Bracket precision zoom mapping invalid"); return 10; }
         hold.probeState=UIGestureRecognizerStateEnded; [wave hold:hold]; if (wave.zoomed) return 11;
     }
-    [wave setSelectionStart:12.345];
+    [wave setSelectionFrom:10 to:50];
+    for (NSNumber *edge in @[@1,@0]) {
+        pan.probeState=UIGestureRecognizerStateBegan; pan.probeTranslation=CGPointZero;
+        pan.probeLocation=CGPointMake(wave.bounds.size.width*(edge.boolValue ? 0.75 : 0.25),85);
+        if (!edge.boolValue) pan.probeLocation=CGPointMake(wave.bounds.size.width*(0.5-15.0/80),85);
+        [wave pan:pan]; pan.probeState=UIGestureRecognizerStateChanged; pan.probeTranslation=CGPointMake((edge.boolValue ? -1 : 1)*wave.bounds.size.width/8,0); [wave pan:pan];
+        pan.probeState=UIGestureRecognizerStateEnded; [wave pan:pan];
+    }
+    if (fabs(wave.start-20)>0.001 || fabs(wave.end-40)>0.001) { puts("Outer brackets failed to shorten selection"); return 22; }
+    [wave setSelectionFrom:12.345 to:32.345];
     UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:crop.view.bounds.size];
     NSData *png=UIImagePNGRepresentation([renderer imageWithActions:^(UIGraphicsImageRendererContext *context){ [crop.view.layer renderInContext:context.CGContext]; }]);
     [png writeToFile:@"/var/mobile/ImportoneCropPreview.png" atomically:YES];
     [crop togglePreview]; AVPlayer *player=[crop valueForKey:@"player"]; player.volume=0;
-    if (!player || fabs(CMTimeGetSeconds(player.currentItem.forwardPlaybackEndTime)-52.345)>0.001) { puts("Preview range invalid"); return 12; }
+    if (!player || fabs(CMTimeGetSeconds(player.currentItem.forwardPlaybackEndTime)-32.345)>0.001) { puts("Preview range invalid"); return 12; }
     if (!waitFor(^BOOL{ return player.rate>0; },10)) { puts("Preview did not start"); return 13; }
-    [player seekToTime:CMTimeMakeWithSeconds(wave.start+39.95,60000) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+    [player seekToTime:CMTimeMakeWithSeconds(wave.end-0.05,60000) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
     if (!waitFor(^BOOL{ return ![[crop valueForKey:@"playing"] boolValue]; },5)) { puts("Preview did not stop at the selection end"); return 20; }
     [crop togglePreview];
     [wave setSelectionStart:13]; if (player.rate!=0 || [[crop valueForKey:@"playing"] boolValue]) return 14;
@@ -102,7 +116,7 @@ int main(int argc,char **argv) { setbuf(stdout,NULL); @autoreleasepool {
     printf("Export duration %.6f, selected start %.6f\n",seconds,CMTimeGetSeconds(exporter.timeRange.start));
     AVAudioFile *decoded=[[AVAudioFile alloc] initForReading:converted error:nil];
     double decodedSeconds=decoded.length/decoded.processingFormat.sampleRate;
-    if (!decoded || fabs(decodedSeconds-40)>0.05 || seconds>40.05 || fabs(CMTimeGetSeconds(exporter.timeRange.start)-12.345)>0.001 || ![converted.pathExtension isEqual:@"m4r"] || [converted isEqual:source]) { puts("Exported crop range or format invalid"); return 16; }
+    if (!decoded || fabs(decodedSeconds-20)>0.05 || seconds>40.05 || fabs(CMTimeGetSeconds(exporter.timeRange.start)-12.345)>0.001 || ![converted.pathExtension isEqual:@"m4r"] || [converted isEqual:source]) { puts("Exported crop range or format invalid"); return 16; }
     [NSFileManager.defaultManager removeItemAtPath:@"/var/mobile/ImportoneCropResult.m4r" error:nil];
     [NSFileManager.defaultManager copyItemAtURL:converted toURL:[NSURL fileURLWithPath:@"/var/mobile/ImportoneCropResult.m4r"] error:nil];
     NSURL *workspace=[importer valueForKey:@"workspace"]; [importer finish:NO];
@@ -111,6 +125,6 @@ int main(int argc,char **argv) { setbuf(stdout,NULL); @autoreleasepool {
     UINavigationController *cancelNavigation=objc_getAssociatedObject(cancelled,&IPPresentedKey);
     NSURL *cancelWorkspace=[cancelled valueForKey:@"workspace"]; [(id)cancelNavigation.topViewController cancel];
     if ([NSFileManager.defaultManager fileExistsAtPath:cancelWorkspace.path]) { puts("Cancel left temporary files"); return 19; }
-    puts("PASS: automatic crop sheet, decoded waveform, drag bounds, both precision brackets, bounded preview, exact 40-second export, rename handoff, and cancellation cleanup.");
+    puts("PASS: automatic crop sheet, decoded waveform, drag bounds, both precision brackets, bounded preview, exact 20-second export, stable cached path, variable bracket duration, rename handoff, and cancellation cleanup.");
     return 0;
 } }

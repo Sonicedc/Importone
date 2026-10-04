@@ -36,7 +36,7 @@
 			<key>id</key>
 			<string>CustomTones</string>
 			<key>footerText</key>
-			<string>Swipe left or tap a tone to rename or remove it. Tones assigned to a sound cannot be removed until you select a replacement.</string>
+			<string>Swipe left or tap a tone to rename, crop, or remove it. Saving a crop replaces its audio. Tones assigned to a sound cannot be removed until you select a replacement.</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -108,7 +108,7 @@
 			<key>footerText</key>
 			<string>© 2026 Importone. All rights reserved.</string>
 			<key>label</key>
-			<string>Importone 0.2.0</string>
+			<string>Importone 0.3.0</string>
 		</dict>
 	</array>
 	<key>title</key>

@@ -5,6 +5,8 @@
 #import <math.h>
 #import <unistd.h>
 #import <rootless.h>
+#import <CommonCrypto/CommonDigest.h>
+#import <stdio.h>
 @interface TLToneManager : NSObject
 + (instancetype)sharedToneManager;
 - (NSArray *)_installedTones;
@@ -42,6 +44,64 @@ static void IPRepairMetadata(TLToneManager *manager) {
         [manager _addToneToManifestAtPath:manifest metadata:metadata fileName:filename mediaDirectory:[manager _deviceITunesRingtoneDirectory]];
     }
 }
+static NSString *IPDigest(NSData *data) {
+    if (!data) return nil;
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256(data.bytes,(CC_LONG)data.length,digest);
+    NSMutableString *hex=[NSMutableString new]; for (NSUInteger i=0;i<sizeof(digest);i++) [hex appendFormat:@"%02x",digest[i]]; return hex;
+}
+static NSDictionary *IPEditTone(NSString *message,NSDictionary *info,TLToneManager *manager,NSDictionary *owned,NSString *source) {
+    NSString *identifier=owned[@"identifier"],*manifest=[manager _deviceITunesRingtoneInformationPlist];
+    NSDictionary *entries=[NSDictionary dictionaryWithContentsOfFile:manifest][@"Ringtones"];
+    NSString *filename; NSDictionary *metadata;
+    for (NSString *key in entries) {
+        NSDictionary *entry=entries[key];
+        if ([entry isKindOfClass:NSDictionary.class] && [entry[@"GUID"] isKindOfClass:NSString.class] && [[@"itunes:" stringByAppendingString:entry[@"GUID"]] isEqual:identifier]) { filename=key; metadata=entry; break; }
+    }
+    if (!filename || ![filename.lastPathComponent isEqual:filename]) return @{@"error":@"iOS could not find the ringtone registration."};
+    NSString *native=[[manager _deviceITunesRingtoneDirectory] stringByAppendingPathComponent:filename];
+    NSData *original=[NSData dataWithContentsOfFile:source],*nativeOriginal=[NSData dataWithContentsOfFile:native];
+    if (!original.length || !nativeOriginal.length) return @{@"error":@"The ringtone audio is missing."};
+    if ([message isEqual:@"readTone"]) return @{@"ok":@YES,@"data":original,@"revision":IPDigest(original),@"nativeRevision":IPDigest(nativeOriginal),@"name":owned[@"name"]};
+    if (![IPDigest(original) isEqual:info[@"revision"]] || ![IPDigest(nativeOriginal) isEqual:info[@"nativeRevision"]]) return @{@"error":@"This ringtone changed while you were editing it. Open Crop again to edit the latest audio."};
+    NSData *data=info[@"data"];
+    if (![data isKindOfClass:NSData.class] || data.length<12 || data.length>10*1024*1024 || memcmp((const char *)data.bytes+4,"ftyp",4)) return @{@"error":@"The crop must be MPEG-4 audio smaller than 10 MB."};
+    NSFileManager *fm=NSFileManager.defaultManager; NSString *token=NSUUID.UUID.UUIDString;
+    NSString *candidate=[source.stringByDeletingLastPathComponent stringByAppendingPathComponent:[token stringByAppendingPathExtension:@"m4r"]];
+    NSString *nativeCandidate=[native stringByAppendingFormat:@".%@.new",token];
+    NSString *sourceBackup=[source stringByAppendingFormat:@".%@.backup",token],*nativeBackup=[native stringByAppendingFormat:@".%@.backup",token];
+    NSError *error; BOOL ok=[data writeToFile:candidate options:NSDataWritingWithoutOverwriting error:&error];
+    AVURLAsset *asset=ok ? [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:candidate] options:@{AVURLAssetPreferPreciseDurationAndTimingKey:@YES}] : nil;
+    double duration=asset ? CMTimeGetSeconds(asset.duration) : 0;
+    if (!ok || ![asset tracksWithMediaType:AVMediaTypeAudio].count || [asset tracksWithMediaType:AVMediaTypeVideo].count || !isfinite(duration) || duration<=0 || duration>40.05 || asset.hasProtectedContent) {
+        [fm removeItemAtPath:candidate error:nil]; return @{@"error":@"The cropped ringtone must be valid audio of at most 40 seconds."};
+    }
+    // Prepare both replacements and backups before touching either registered file.
+    ok=[data writeToFile:nativeCandidate options:NSDataWritingWithoutOverwriting error:&error] &&
+        [fm copyItemAtPath:source toPath:sourceBackup error:&error] && [fm copyItemAtPath:native toPath:nativeBackup error:&error];
+    for (NSString *path in @[candidate,nativeCandidate]) [fm setAttributes:@{NSFilePosixPermissions:@0644} ofItemAtPath:path error:nil];
+    BOOL nativeReplaced=NO,sourceReplaced=NO;
+    if (ok) {
+        nativeReplaced=rename(nativeCandidate.fileSystemRepresentation,native.fileSystemRepresentation)==0;
+        sourceReplaced=nativeReplaced && rename(candidate.fileSystemRepresentation,source.fileSystemRepresentation)==0;
+        ok=sourceReplaced;
+    }
+    if (ok) {
+        @try {
+            [manager _addToneToManifestAtPath:manifest metadata:metadata fileName:filename mediaDirectory:[manager _deviceITunesRingtoneDirectory]];
+            [manager _reloadTonesAfterExternalChange]; ok=[manager toneWithIdentifierIsValid:identifier];
+        } @catch (NSException *exception) { ok=NO; }
+    }
+    BOOL restored=YES;
+    if (!ok) {
+        if (nativeReplaced) restored=rename(nativeBackup.fileSystemRepresentation,native.fileSystemRepresentation)==0;
+        if (sourceReplaced) restored=(rename(sourceBackup.fileSystemRepresentation,source.fileSystemRepresentation)==0) && restored;
+        [manager _reloadTonesAfterExternalChange];
+    }
+    for (NSString *path in @[candidate,nativeCandidate]) [fm removeItemAtPath:path error:nil];
+    if (ok || restored) for (NSString *path in @[sourceBackup,nativeBackup]) [fm removeItemAtPath:path error:nil];
+    IPUpdateCatalog(manager);
+    return ok ? @{@"ok":@YES,@"identifier":identifier,@"name":owned[@"name"]} : @{@"error":restored ? @"The crop could not be saved. Your original ringtone was kept." : @"The crop could not be saved completely. Recovery copies were retained; please contact the developer."};
+}
 static NSDictionary *IPManageTone(NSString *message, NSDictionary *info) {
     TLToneManager *manager = [NSClassFromString(@"TLToneManager") sharedToneManager];
     IPUpdateCatalog(manager);
@@ -53,6 +113,7 @@ static NSDictionary *IPManageTone(NSString *message, NSDictionary *info) {
     NSString *oldName = owned[@"name"], *identifier = owned[@"identifier"];
     NSString *source = [@"/var/lib/ringtones" stringByAppendingPathComponent:[oldName stringByAppendingPathExtension:@"m4r"]];
     NSFileManager *fm = NSFileManager.defaultManager;
+    if ([@[@"readTone", @"replace"] containsObject:message]) return IPEditTone(message,info,manager,owned,source);
     if ([@[@"canRemove", @"remove"] containsObject:message]) {
         NSString *reason = IPToneRemovalError(manager, identifier);
         if (reason) return @{@"error":reason};
@@ -101,9 +162,9 @@ static NSDictionary *IPManageTone(NSString *message, NSDictionary *info) {
 @end
 @implementation IPService
 - (NSDictionary *)receive:(NSString *)message userInfo:(NSDictionary *)info {
-    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.2.0"};
+    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.3.0"};
     if ([message isEqual:@"status"]) return ([info[@"job"] isKindOfClass:NSString.class] ? self.jobs[info[@"job"]] : nil) ?: @{@"done":@YES, @"ok":@NO, @"error":@"Import job expired."};
-    if ([@[@"list", @"rename", @"remove", @"canRemove"] containsObject:message]) return IPManageTone(message, info);
+    if ([@[@"list", @"rename", @"remove", @"canRemove", @"readTone", @"replace"] containsObject:message]) return IPManageTone(message, info);
     if (![message isEqual:@"import"]) return @{@"error":@"Unknown request."};
     if (!IPEnabled()) return @{@"error":@"Importone is disabled."};
     NSString *name = IPSafeName(info[@"name"]); NSData *data = info[@"data"];
@@ -182,6 +243,6 @@ int main(int argc, char **argv) { @autoreleasepool {
     [center registerForMessageName:@"ping" target:service selector:@selector(receive:userInfo:)];
     [center registerForMessageName:@"import" target:service selector:@selector(receive:userInfo:)];
     [center registerForMessageName:@"status" target:service selector:@selector(receive:userInfo:)];
-    for (NSString *message in @[@"list", @"rename", @"remove", @"canRemove"]) [center registerForMessageName:message target:service selector:@selector(receive:userInfo:)];
+    for (NSString *message in @[@"list", @"rename", @"remove", @"canRemove", @"readTone", @"replace"]) [center registerForMessageName:message target:service selector:@selector(receive:userInfo:)];
     [[NSRunLoop currentRunLoop] run];
 } return 0; }

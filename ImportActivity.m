@@ -111,7 +111,7 @@
             double seconds = CMTimeGetSeconds(asset.duration);
             if (![asset tracksWithMediaType:AVMediaTypeAudio].count || [asset tracksWithMediaType:AVMediaTypeVideo].count || !isfinite(seconds) || seconds <= 0 || asset.hasProtectedContent) { [self fail:@"Choose a readable, unprotected audio file. Video files are not supported."]; return; }
             if (seconds > 40) {
-                self.step.text = @"Choose a 40-second selection"; [self.spinner stopAnimating];
+                self.step.text = @"Choose your ringtone selection"; [self.spinner stopAnimating];
                 IPCropController *crop = [[IPCropController alloc] initWithAsset:asset];
                 __weak IPImportController *weakSelf = self;
                 crop.completion = ^(BOOL accepted, CMTimeRange range){

@@ -3,8 +3,11 @@
 #import "../Shared/Bridge.h"
 #import <rootless.h>
 #import <dlfcn.h>
+#import "../CropController.h"
 @interface IPRootListController : PSListController
 @property (nonatomic) BOOL busy;
+@property UIView *cropHUD;
+@property AVAssetExportSession *cropExporter;
 @end
 @implementation IPRootListController
 - (NSArray *)specifiers {
@@ -50,6 +53,68 @@
         });
     });
 }
+- (void)setCropStep:(NSString *)step {
+    if (!self.cropHUD) {
+        UIView *overlay=[[UIView alloc] initWithFrame:self.view.bounds]; overlay.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+        overlay.backgroundColor=[UIColor.blackColor colorWithAlphaComponent:0.12];
+        UIVisualEffectView *card=[[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial]];
+        card.translatesAutoresizingMaskIntoConstraints=NO; card.layer.cornerRadius=22; card.clipsToBounds=YES; [overlay addSubview:card];
+        UIActivityIndicatorView *spinner=[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge]; [spinner startAnimating];
+        UILabel *label=[UILabel new]; label.tag=501; label.numberOfLines=0; label.textAlignment=NSTextAlignmentCenter; label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[spinner,label]]; stack.axis=UILayoutConstraintAxisVertical; stack.spacing=20; stack.translatesAutoresizingMaskIntoConstraints=NO; [card.contentView addSubview:stack];
+        [NSLayoutConstraint activateConstraints:@[[card.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],[card.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],[card.widthAnchor constraintEqualToConstant:220],[card.heightAnchor constraintEqualToConstant:220],[stack.centerYAnchor constraintEqualToAnchor:card.contentView.centerYAnchor],[stack.leadingAnchor constraintEqualToAnchor:card.contentView.leadingAnchor constant:20],[stack.trailingAnchor constraintEqualToAnchor:card.contentView.trailingAnchor constant:-20]]];
+        self.cropHUD=overlay; [self.view addSubview:overlay];
+    }
+    ((UILabel *)[self.cropHUD viewWithTag:501]).text=step;
+}
+- (void)finishCropWorkspace:(NSURL *)workspace error:(NSString *)error {
+    self.cropExporter=nil; [self.cropHUD removeFromSuperview]; self.cropHUD=nil;
+    self.busy=NO; self.table.userInteractionEnabled=YES;
+    [NSFileManager.defaultManager removeItemAtURL:workspace error:nil];
+    _specifiers=nil; [self reloadSpecifiers]; if (error) [self showError:error];
+}
+- (void)saveCropAsset:(AVAsset *)asset range:(CMTimeRange)range tone:(NSDictionary *)tone snapshot:(NSDictionary *)snapshot workspace:(NSURL *)workspace {
+    [self setCropStep:@"Converting selection…"];
+    AVAssetExportSession *exporter=[[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
+    if (!exporter || ![exporter.supportedFileTypes containsObject:AVFileTypeAppleM4A]) { [self finishCropWorkspace:workspace error:@"This ringtone cannot be cropped on this device."]; return; }
+    self.cropExporter=exporter; exporter.outputURL=[workspace URLByAppendingPathComponent:@"crop.m4r"]; exporter.outputFileType=AVFileTypeAppleM4A; exporter.timeRange=range;
+    [exporter exportAsynchronouslyWithCompletionHandler:^{
+        if (exporter.status!=AVAssetExportSessionStatusCompleted) { dispatch_async(dispatch_get_main_queue(), ^{ [self finishCropWorkspace:workspace error:exporter.error.localizedDescription ?: @"The crop could not be converted. Your original ringtone was kept."]; }); return; }
+        dispatch_async(dispatch_get_main_queue(), ^{ [self setCropStep:@"Saving ringtone…"]; });
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        NSData *data=[NSData dataWithContentsOfURL:exporter.outputURL];
+        NSDictionary *reply=data ? [IPCenter() sendMessageAndReceiveReplyName:@"replace" userInfo:@{@"identifier":tone[@"identifier"],@"revision":snapshot[@"revision"],@"nativeRevision":snapshot[@"nativeRevision"],@"data":data}] : nil;
+        dispatch_async(dispatch_get_main_queue(), ^{ [self finishCropWorkspace:workspace error:[reply[@"ok"] boolValue] ? nil : (reply[@"error"] ?: @"Importone could not confirm that the crop was saved. Refresh the list and try again.")]; });
+        });
+    }];
+}
+- (void)cropTone:(NSDictionary *)tone {
+    if (self.busy) return;
+    self.busy=YES; self.table.userInteractionEnabled=NO; [self setCropStep:@"Opening ringtone…"];
+    NSURL *workspace=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        NSDictionary *snapshot=[IPCenter() sendMessageAndReceiveReplyName:@"readTone" userInfo:@{@"identifier":tone[@"identifier"]}];
+        NSData *data=snapshot[@"data"]; NSError *error;
+        NSURL *source=[workspace URLByAppendingPathComponent:@"original.m4r"];
+        BOOL ready=[snapshot[@"ok"] boolValue] && [data isKindOfClass:NSData.class] && [NSFileManager.defaultManager createDirectoryAtURL:workspace withIntermediateDirectories:YES attributes:nil error:&error] && [data writeToURL:source options:NSDataWritingAtomic error:&error];
+        AVURLAsset *asset=ready ? [AVURLAsset URLAssetWithURL:source options:@{AVURLAssetPreferPreciseDurationAndTimingKey:@YES}] : nil;
+        ready=ready && [asset tracksWithMediaType:AVMediaTypeAudio].count && asset.exportable && CMTimeGetSeconds(asset.duration)>0;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!ready) { [self finishCropWorkspace:workspace error:snapshot[@"error"] ?: error.localizedDescription ?: @"This ringtone could not be opened for cropping."]; return; }
+            [self.cropHUD removeFromSuperview]; self.cropHUD=nil;
+            IPCropController *editor=[[IPCropController alloc] initWithAsset:asset];
+            [editor loadViewIfNeeded]; editor.navigationItem.rightBarButtonItem.title=@"Save Crop";
+            editor.completion=^(BOOL accepted,CMTimeRange range){
+                if (accepted) [self saveCropAsset:asset range:range tone:tone snapshot:snapshot workspace:workspace];
+                else [self finishCropWorkspace:workspace error:nil];
+            };
+            UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:editor];
+            navigation.modalPresentationStyle=UIModalPresentationPageSheet; navigation.modalInPresentation=YES;
+            navigation.sheetPresentationController.detents=@[UISheetPresentationControllerDetent.mediumDetent,UISheetPresentationControllerDetent.largeDetent];
+            [self presentViewController:navigation animated:YES completion:nil];
+        });
+    });
+}
 - (void)renameTone:(NSDictionary *)tone {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Rename Ringtone" message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field){ field.text = tone[@"name"]; field.clearButtonMode = UITextFieldViewModeWhileEditing; field.autocorrectionType = UITextAutocorrectionTypeNo; }];
@@ -84,6 +149,7 @@
     if (!tone || self.busy) return;
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:tone[@"name"] message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Rename" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){ [self renameTone:tone]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Crop" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){ [self cropTone:tone]; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){ [self removeTone:tone]; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
@@ -116,7 +182,9 @@
     UIContextualAction *remove = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Remove" handler:^(UIContextualAction *action, UIView *view, void (^completion)(BOOL)){ completion(YES); [self removeTone:tone]; }];
     UIContextualAction *rename = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"Rename" handler:^(UIContextualAction *action, UIView *view, void (^completion)(BOOL)){ completion(YES); [self renameTone:tone]; }];
     rename.backgroundColor = UIColor.systemBlueColor;
-    UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[remove, rename]];
+    UIContextualAction *crop = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"Crop" handler:^(UIContextualAction *action, UIView *view, void (^completion)(BOOL)){ completion(YES); [self cropTone:tone]; }];
+    crop.backgroundColor = UIColor.systemPurpleColor;
+    UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[remove, crop, rename]];
     configuration.performsFirstActionWithFullSwipe = NO;
     return configuration;
 }
