@@ -12,7 +12,7 @@ A rootless iOS jailbreak tweak that imports custom ringtones from the Share Shee
 4. Tap **Importone**. Audio is checked, then converted to MPEG-4 audio with an `.m4r` extension if needed.
 5. Rename it and tap **Import**. Select the registered tone in **Settings → Sounds & Haptics → Ringtone**.
 
-The import sheet displays a blurred background, centered circular activity indicator, step text, and conversion progress. The credits match the supplied CarCanvas reference: Sonicedc, GitHub Repository, and Licenses. The GitHub button targets `https://github.com/Sonicedc/Importone`; publication is pending authentication.
+The import sheet displays a blurred background, centered circular activity indicator, step text, and conversion progress
 
 ## Compatibility and boundaries
 
@@ -39,22 +39,3 @@ Install Theos, an iOS SDK and signing/packaging tools. Set `THEOS` if it is not 
 The package is written to `packages/`. The SDK version is configured as 16.5 in `Makefile`. The build script keeps the compiler module cache in the project directory. Settings PNG assets are checked in; regenerate them with `python3 scripts/make_icon.py` (Pillow required).
 
 The install script prepares `/var/lib/ringtones` for `mobile` and starts the launch daemon. The launch plist and maintainer scripts target the standard `/var/jb` rootless prefix; relocated jailbreak roots need launch-path adaptation before deployment.
-
-## Device acceptance checks
-
-Before a release, run the checklist in [TESTING.md](TESTING.md). In particular, verify the private ToneLibrary adapter and an incoming call using the imported tone. No production compatibility claim is made until those checks pass.
-
-## GitHub
-
-After authenticating:
-
-```sh
-gh auth login --hostname github.com
-gh repo create Sonicedc/Importone --private --source=. --remote=origin --push
-```
-
-Use `--public` instead of `--private` if desired. No repository has been created by the build.
-
-## Credits
-
-[Sonicedc](https://github.com/Sonicedc). Credit-row design and assets use the supplied CarCanvasSource reference. Third-party license notices are included in Settings → Importone → Licenses. Source license: all rights reserved pending an explicit license choice.
