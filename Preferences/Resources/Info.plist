@@ -11,7 +11,7 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleVersion</key>
-	<string>0.1.2</string>
+	<string>0.1.3</string>
 	<key>NSPrincipalClass</key>
 	<string>IPRootListController</string>
 </dict>

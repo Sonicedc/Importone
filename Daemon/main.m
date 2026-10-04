@@ -12,7 +12,7 @@
 @end
 @implementation IPService
 - (NSDictionary *)receive:(NSString *)message userInfo:(NSDictionary *)info {
-    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.2"};
+    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.3"};
     if ([message isEqual:@"status"]) return ([info[@"job"] isKindOfClass:NSString.class] ? self.jobs[info[@"job"]] : nil) ?: @{@"done":@YES, @"ok":@NO, @"error":@"Import job expired."};
     if (!IPEnabled()) return @{@"error":@"Importone is disabled."};
     NSString *name = IPSafeName(info[@"name"]); NSData *data = info[@"data"];
