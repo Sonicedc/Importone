@@ -8,6 +8,9 @@
 @property UIActivityIndicatorView *spinner;
 @property UIProgressView *progress;
 @property NSURL *source;
+@property NSItemProvider *provider;
+@property NSURL *materializedDirectory;
+@property BOOL started;
 @property NSURL *workspace;
 @property NSURL *converted;
 @property AVAssetExportSession *exporter;
@@ -29,10 +32,49 @@
     [NSLayoutConstraint activateConstraints:@[[stack.centerXAnchor constraintEqualToAnchor:blur.contentView.centerXAnchor], [stack.centerYAnchor constraintEqualToAnchor:blur.contentView.centerYAnchor], [stack.widthAnchor constraintEqualToConstant:260]]];
     [self.spinner startAnimating]; self.step.text = @"Checking audio…";
 }
-- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; if (!self.workspace) [self start]; }
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    if (self.started) return;
+    self.started = YES;
+    if (self.provider) [self resolveProvider]; else [self start];
+}
+- (void)resolveProvider {
+    self.step.text = @"Loading audio file…";
+    self.materializedDirectory = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES] URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+    NSError *error;
+    if (![NSFileManager.defaultManager createDirectoryAtURL:self.materializedDirectory withIntermediateDirectories:YES attributes:nil error:&error]) { [self fail:error.localizedDescription]; return; }
+    NSString *type;
+    for (NSString *identifier in self.provider.registeredTypeIdentifiers) {
+        if ([[UTType typeWithIdentifier:identifier] conformsToType:UTTypeAudio]) { type = identifier; break; }
+    }
+    void (^received)(NSURL *, NSError *) = ^(NSURL *url, NSError *failure){
+        if (!url || failure) { [self fail:failure.localizedDescription ?: @"The shared file could not be loaded."]; return; }
+        BOOL scoped = [url startAccessingSecurityScopedResource];
+        __block NSError *copyError; NSError *coordinationError;
+        NSString *filename = url.lastPathComponent;
+        if (!filename.length) filename = @"Audio.m4a";
+        NSURL *local = [self.materializedDirectory URLByAppendingPathComponent:filename];
+        [[[NSFileCoordinator alloc] initWithFilePresenter:nil] coordinateReadingItemAtURL:url options:0 error:&coordinationError byAccessor:^(NSURL *readingURL){
+            NSNumber *size; [readingURL getResourceValue:&size forKey:NSURLFileSizeKey error:&copyError];
+            if (size.unsignedLongLongValue > 100 * 1024 * 1024) { copyError = [NSError errorWithDomain:@"Importone" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Choose an audio file smaller than 100 MB."}]; return; }
+            [NSFileManager.defaultManager copyItemAtURL:readingURL toURL:local error:&copyError];
+        }];
+        if (scoped) [url stopAccessingSecurityScopedResource];
+        if (coordinationError || copyError) { [self fail:(coordinationError ?: copyError).localizedDescription]; return; }
+        dispatch_async(dispatch_get_main_queue(), ^{ self.source = local; [self start]; });
+    };
+    if (type || [self.provider hasItemConformingToTypeIdentifier:UTTypeData.identifier]) {
+        [self.provider loadFileRepresentationForTypeIdentifier:type ?: UTTypeData.identifier completionHandler:received];
+    } else {
+        [self.provider loadItemForTypeIdentifier:UTTypeFileURL.identifier options:nil completionHandler:^(id item, NSError *failure){
+            received([item isKindOfClass:NSURL.class] ? item : nil, failure);
+        }];
+    }
+}
 - (void)finish:(BOOL)success {
     [self.timer invalidate]; self.timer = nil; [self.exporter cancelExport];
-    [[NSFileManager defaultManager] removeItemAtURL:self.workspace error:nil];
+    if (self.workspace) [[NSFileManager defaultManager] removeItemAtURL:self.workspace error:nil];
+    if (self.materializedDirectory) [[NSFileManager defaultManager] removeItemAtURL:self.materializedDirectory error:nil];
     [self dismissViewControllerAnimated:YES completion:^{ if (self.finished) self.finished(success); }];
 }
 - (void)fail:(NSString *)message {
@@ -92,6 +134,7 @@
         self.step.text = @"Installing ringtone…"; [self.spinner startAnimating];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             NSData *data = [NSData dataWithContentsOfURL:self.converted];
+            if (data.length > 10 * 1024 * 1024) { dispatch_async(dispatch_get_main_queue(), ^{ [self fail:@"The resulting ringtone exceeds 10 MB."]; }); return; }
             NSDictionary *reply = data ? [IPCenter() sendMessageAndReceiveReplyName:@"import" userInfo:@{@"name":name, @"data":data}] : nil;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (![reply[@"ok"] boolValue]) { [self fail:reply[@"error"] ?: @"The import service is unavailable. Restart the app and reinstall Importone if needed."]; return; }
@@ -120,6 +163,7 @@
 @end
 @interface IPImportActivity ()
 @property NSURL *source;
+@property NSItemProvider *provider;
 @property IPImportController *controller;
 @end
 @implementation IPImportActivity
@@ -127,23 +171,36 @@
 - (UIActivityType)activityType { return @"com.sonicedc.importone.import"; }
 - (NSString *)activityTitle { return @"Importone"; }
 - (UIImage *)activityImage { return [UIImage systemImageNamed:@"bell.badge.fill"]; }
+- (BOOL)isAudioCandidate:(id)item {
+    if ([item isKindOfClass:NSURL.class] && [item isFileURL]) {
+        UTType *type = [UTType typeWithFilenameExtension:[item pathExtension]];
+        return [type conformsToType:UTTypeAudio] || [[item pathExtension] caseInsensitiveCompare:@"m4r"] == NSOrderedSame;
+    }
+    if ([item isKindOfClass:NSItemProvider.class]) {
+        NSItemProvider *provider = item;
+        if ([provider hasItemConformingToTypeIdentifier:UTTypeAudio.identifier]) return YES;
+        UTType *type = [UTType typeWithFilenameExtension:provider.suggestedName.pathExtension];
+        if ([type conformsToType:UTTypeAudio] || [provider.suggestedName.pathExtension.lowercaseString isEqual:@"m4r"]) return YES;
+        // Generic file-URL providers are validated from their actual contents after loading.
+        return [provider hasItemConformingToTypeIdentifier:UTTypeFileURL.identifier];
+    }
+    return NO;
+}
 - (BOOL)canPerformWithActivityItems:(NSArray *)items {
     if (!IPEnabled()) return NO;
     NSUInteger count = 0;
-    for (id item in items) if ([item isKindOfClass:NSURL.class] && [item isFileURL]) {
-        UTType *type = [UTType typeWithFilenameExtension:[item pathExtension]];
-        if ([type conformsToType:UTTypeAudio] || [[item pathExtension] caseInsensitiveCompare:@"m4r"] == NSOrderedSame) count++;
-    }
+    for (id item in self.providedItems ?: items) if ([self isAudioCandidate:item]) count++;
     return count == 1;
 }
 - (void)prepareWithActivityItems:(NSArray *)items {
-    for (id item in items) if ([item isKindOfClass:NSURL.class] && [item isFileURL]) {
-        UTType *type = [UTType typeWithFilenameExtension:[item pathExtension]];
-        if ([type conformsToType:UTTypeAudio] || [[item pathExtension] caseInsensitiveCompare:@"m4r"] == NSOrderedSame) { self.source = item; break; }
+    self.source = nil; self.provider = nil;
+    for (id item in self.providedItems ?: items) if ([self isAudioCandidate:item]) {
+        if ([item isKindOfClass:NSURL.class]) self.source = item; else self.provider = item;
+        break;
     }
 }
 - (UIViewController *)activityViewController {
-    self.controller = [IPImportController new]; self.controller.source = self.source;
+    self.controller = [IPImportController new]; self.controller.source = self.source; self.controller.provider = self.provider;
     __weak IPImportActivity *weakSelf = self;
     self.controller.finished = ^(BOOL success){ [weakSelf activityDidFinish:success]; };
     return self.controller;

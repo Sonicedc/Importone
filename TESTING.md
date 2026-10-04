@@ -19,3 +19,7 @@ Record device, iOS version, jailbreak version, loader, and Dopamine version for 
 - Uninstall: confirm daemon stops, settings disappear, and registered tones and user files remain.
 
 Build/package verification on the development host does not substitute for these checks.
+
+## Non-presenting on-device UI integration probe
+
+`tests/UIProbe.m` is built separately from the package and verifies the activity accepts an audio URL, rejects a PDF, accepts an audio item provider, appears in a modern Share Sheet configuration, and loads the Settings principal class. It does not present UI or replace the visual acceptance checks above.

@@ -12,6 +12,8 @@
 		<string>IPRootListController</string>
 		<key>icon</key>
 		<string>icon.png</string>
+		<key>isController</key>
+		<true/>
 		<key>label</key>
 		<string>Importone</string>
 	</dict>
