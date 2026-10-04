@@ -73,16 +73,19 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
     if (!settings.isViewLoaded) { puts("Settings view did not load"); return 8; }
     BOOL management = NO;
     NSInteger toneSection = NSNotFound, shortcutSection = NSNotFound;
+    UIFont *enabledFont;
+    NSMutableArray<UITableViewCell *> *plainCells = [NSMutableArray new];
     UITableView *table = [(id)settings table];
     for (NSInteger section = 0; section < table.numberOfSections; section++) {
         for (NSInteger row = 0; row < [table numberOfRowsInSection:section]; row++) {
             NSIndexPath *path = [NSIndexPath indexPathForRow:row inSection:section];
             id specifier = [(id)settings specifierAtIndexPath:path];
-            if ([[specifier propertyForKey:@"id"] isEqual:@"OpenSounds"]) shortcutSection = section;
+            if ([[specifier propertyForKey:@"key"] isEqual:@"Enabled"]) enabledFont = [(id)settings tableView:table cellForRowAtIndexPath:path].textLabel.font;
+            if ([[specifier propertyForKey:@"id"] isEqual:@"OpenSounds"]) { shortcutSection = section; [plainCells addObject:[(id)settings tableView:table cellForRowAtIndexPath:path]]; }
             if (![specifier propertyForKey:@"importoneTone"]) continue;
             toneSection = section;
             UITableViewCell *cell = [(id)settings tableView:table cellForRowAtIndexPath:path];
-            if (![cell.textLabel.textColor isEqual:UIColor.labelColor] || !cell.imageView.image || cell.accessoryType != UITableViewCellAccessoryDisclosureIndicator) { puts("Neutral ringtone cell styling invalid"); return 18; }
+            [plainCells addObject:cell];
             UISwipeActionsConfiguration *actions = [(id)settings tableView:table trailingSwipeActionsConfigurationForRowAtIndexPath:path];
             if (![(id)settings tableView:table canEditRowAtIndexPath:path]) { puts("Swipe editing unavailable"); return 16; }
             if (actions.actions.count != 2 || actions.performsFirstActionWithFullSwipe || ![actions.actions[0].title isEqual:@"Remove"] || ![actions.actions[1].title isEqual:@"Rename"]) { puts("Management actions invalid"); return 14; }
@@ -91,7 +94,10 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
     }
     if (!management) { puts("Custom tone preferences row missing"); return 15; }
     if (shortcutSection == NSNotFound || shortcutSection == toneSection) { puts("Shortcut is not separated from ringtone list"); return 19; }
-    puts("PASS: neutral ringtone rows, icons, swipe actions, and separate shortcut section.");
+    for (UITableViewCell *cell in plainCells) {
+        if (![cell.textLabel.textColor isEqual:UIColor.labelColor] || cell.imageView.image || cell.accessoryType != UITableViewCellAccessoryNone || ![cell.textLabel.font isEqual:enabledFont]) { puts("Plain row styling or Enabled font match invalid"); return 18; }
+    }
+    puts("PASS: plain text rows without icons/chevrons, same font as Enabled, and separate shortcut.");
     UINavigationController *navigation = [[IPProbeNavigation alloc] initWithRootViewController:settings];
     [navigation loadViewIfNeeded];
     [(id)settings openSounds];

@@ -23,7 +23,6 @@
                 row.buttonAction = @selector(manageTone:);
                 row->action = @selector(manageTone:);
                 [row setProperty:tone forKey:@"importoneTone"];
-                [row setProperty:@64 forKey:@"height"];
                 [items insertObject:row atIndex:position++];
             }
         }
@@ -92,20 +91,18 @@
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
-    if ([specifier propertyForKey:@"importoneTone"]) {
+    if ([specifier propertyForKey:@"importoneTone"] || [specifier.identifier isEqual:@"OpenSounds"]) {
+        // Use the native Enabled row's font, including its size and regular weight.
+        PSSpecifier *enabled;
+        for (PSSpecifier *item in self.specifiers) if ([[item propertyForKey:@"key"] isEqual:@"Enabled"]) { enabled = item; break; }
+        NSIndexPath *enabledPath = enabled ? [self indexPathForSpecifier:enabled] : nil;
+        UITableViewCell *enabledCell = enabledPath ? [super tableView:tableView cellForRowAtIndexPath:enabledPath] : nil;
+        cell.textLabel.font = enabledCell.textLabel.font ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
         cell.textLabel.textColor = UIColor.labelColor;
-        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-        cell.textLabel.numberOfLines = 2;
-        cell.imageView.image = [UIImage systemImageNamed:@"bell.fill"];
-        cell.imageView.tintColor = [UIColor colorWithRed:0.48 green:0.35 blue:0.88 alpha:1];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.textLabel.textAlignment = NSTextAlignmentNatural;
-    } else if ([specifier.identifier isEqual:@"OpenSounds"]) {
-        cell.textLabel.textColor = UIColor.labelColor;
-        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-        cell.imageView.image = [UIImage systemImageNamed:@"speaker.wave.2.fill"];
-        cell.imageView.tintColor = [UIColor colorWithRed:0.48 green:0.35 blue:0.88 alpha:1];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.textLabel.numberOfLines = 1;
+        cell.imageView.image = nil;
+        cell.accessoryView = nil;
+        cell.accessoryType = UITableViewCellAccessoryNone;
         cell.textLabel.textAlignment = NSTextAlignmentNatural;
     }
     return cell;
