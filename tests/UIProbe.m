@@ -86,6 +86,7 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
             toneSection = section;
             UITableViewCell *cell = [(id)settings tableView:table cellForRowAtIndexPath:path];
             [plainCells addObject:cell];
+            if (![cell.accessoryView isKindOfClass:UIButton.class] || cell.accessoryView.bounds.size.width<44 || ![cell.accessoryView.accessibilityIdentifier hasPrefix:@"importone.preview."]) { puts("Ringtone preview button missing"); return 20; }
             UISwipeActionsConfiguration *actions = [(id)settings tableView:table trailingSwipeActionsConfigurationForRowAtIndexPath:path];
             if (![(id)settings tableView:table canEditRowAtIndexPath:path]) { puts("Swipe editing unavailable"); return 16; }
             if (actions.actions.count != 3 || actions.performsFirstActionWithFullSwipe || ![actions.actions[0].title isEqual:@"Remove"] || ![actions.actions[1].title isEqual:@"Crop"] || ![actions.actions[2].title isEqual:@"Rename"]) { puts("Management actions invalid"); return 14; }
@@ -97,7 +98,7 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
     for (UITableViewCell *cell in plainCells) {
         if (![cell.textLabel.textColor isEqual:UIColor.labelColor] || cell.imageView.image || cell.accessoryType != UITableViewCellAccessoryNone || ![cell.textLabel.font isEqual:enabledFont]) { puts("Plain row styling or Enabled font match invalid"); return 18; }
     }
-    puts("PASS: plain text rows without icons/chevrons, same font as Enabled, and separate shortcut.");
+    puts("PASS: plain text rows with preview controls and no decorative icons/chevrons, same font as Enabled, and separate shortcut.");
     UINavigationController *navigation = [[IPProbeNavigation alloc] initWithRootViewController:settings];
     [navigation loadViewIfNeeded];
     [(id)settings openSounds];
@@ -111,12 +112,22 @@ int main(void) { setbuf(stdout,NULL); @autoreleasepool {
             if ([[item text] isEqual:@"Custom Ringtones"]) {
                 if ([item numberOfChildren] < 1) { puts("Custom section empty"); return 9; }
                 id row = [item childItemAtIndex:0];
-                NSString *identifier = [picker _identifierOfToneAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:section]];
-                if (![identifier hasPrefix:@"itunes:"] || ![[row text] length]) { puts("Native tone row invalid"); return 10; }
+                // Native rows append a localized Default marker when the tone
+                // is assigned. Find the catalog name before that marker.
+                NSString *identifier,*matchedName;
+                NSArray *catalog=[NSArray arrayWithContentsOfFile:@"/var/jb/var/mobile/Library/Importone/CustomTones.plist"];
+                for (NSDictionary *tone in catalog) {
+                    NSString *name=tone[@"name"];
+                    if ([[row text] isEqual:name] || ([[row text] hasPrefix:[name stringByAppendingString:@" ("]] && name.length>matchedName.length)) { identifier=tone[@"identifier"]; matchedName=name; }
+                }
+                if (![identifier hasPrefix:@"itunes:"] || ![[row text] length]) { printf("Native tone row invalid: alert %lld class %s text %s identifier %s description %s\n",alert.longLongValue,NSStringFromClass([row class]).UTF8String,[[row text] UTF8String] ?: "nil",identifier.UTF8String ?: "nil",[[row description] UTF8String]); return 10; }
                 [picker didSelectTonePickerItem:row];
                 [picker stopPlayingWithFadeOut:NO];
-                if (![picker.selectedToneIdentifier isEqual:identifier]) { puts("Native row selection failed"); return 11; }
-                printf("PASS: custom section for alert type %lld, %ld tones, selected native identifier.\n", alert.longLongValue,(long)[item numberOfChildren]);
+                // ToneKit represents the native Default alias with a nil
+                // selection; its label shows the resolved tone's name.
+                BOOL defaultAlias=[[row text] hasSuffix:@" (Default)"];
+                if (defaultAlias ? picker.selectedToneIdentifier!=nil : ![picker.selectedToneIdentifier isEqual:identifier]) { puts("Native row selection failed"); return 11; }
+                printf("PASS: custom section for alert type %lld, %ld tones, native %s selection.\n", alert.longLongValue,(long)[item numberOfChildren],defaultAlias ? "Default" : "identifier");
                 found = YES; break;
             }
         }

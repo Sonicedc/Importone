@@ -162,7 +162,7 @@ static NSDictionary *IPManageTone(NSString *message, NSDictionary *info) {
 @end
 @implementation IPService
 - (NSDictionary *)receive:(NSString *)message userInfo:(NSDictionary *)info {
-    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.3.0"};
+    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.3.1"};
     if ([message isEqual:@"status"]) return ([info[@"job"] isKindOfClass:NSString.class] ? self.jobs[info[@"job"]] : nil) ?: @{@"done":@YES, @"ok":@NO, @"error":@"Import job expired."};
     if ([@[@"list", @"rename", @"remove", @"canRemove", @"readTone", @"replace"] containsObject:message]) return IPManageTone(message, info);
     if (![message isEqual:@"import"]) return @{@"error":@"Unknown request."};

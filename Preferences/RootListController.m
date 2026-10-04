@@ -4,10 +4,16 @@
 #import <rootless.h>
 #import <dlfcn.h>
 #import "../CropController.h"
-@interface IPRootListController : PSListController
+@interface IPRootListController : PSListController <AVAudioPlayerDelegate>
 @property (nonatomic) BOOL busy;
 @property UIView *cropHUD;
 @property AVAssetExportSession *cropExporter;
+@property AVAudioPlayer *tonePreviewPlayer;
+@property NSString *previewIdentifier;
+@property NSUInteger previewGeneration;
+@property NSString *previewCategory;
+@property NSString *previewMode;
+@property AVAudioSessionCategoryOptions previewOptions;
 @end
 @implementation IPRootListController
 - (NSArray *)specifiers {
@@ -33,6 +39,80 @@
     }
     return _specifiers;
 }
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stopTonePreview) name:UIApplicationWillResignActiveNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stopTonePreview) name:AVAudioSessionInterruptionNotification object:nil];
+}
+- (void)viewWillDisappear:(BOOL)animated { [self stopTonePreview]; [super viewWillDisappear:animated]; }
+- (void)configurePreviewButton:(UIButton *)button tone:(NSDictionary *)tone {
+    BOOL active=[self.previewIdentifier isEqual:tone[@"identifier"]] && (!self.tonePreviewPlayer || self.tonePreviewPlayer.playing);
+    [button setImage:[UIImage systemImageNamed:active ? @"pause.fill" : @"play.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightRegular]] forState:UIControlStateNormal];
+    button.accessibilityLabel=[NSString stringWithFormat:@"%@ %@",active ? @"Pause preview of" : @"Play",tone[@"name"]];
+    button.accessibilityIdentifier=[@"importone.preview." stringByAppendingString:tone[@"identifier"]];
+    button.tintColor=UIColor.labelColor; button.enabled=!self.busy;
+}
+- (void)updatePreviewButtons {
+    for (UITableViewCell *cell in self.table.visibleCells) {
+        NSIndexPath *path=[self.table indexPathForCell:cell];
+        NSDictionary *tone=path ? [[self specifierAtIndexPath:path] propertyForKey:@"importoneTone"] : nil;
+        if (tone && [cell.accessoryView isKindOfClass:UIButton.class]) [self configurePreviewButton:(id)cell.accessoryView tone:tone];
+    }
+}
+- (void)restorePreviewSession {
+    if (self.previewCategory) {
+        [AVAudioSession.sharedInstance setCategory:self.previewCategory mode:self.previewMode options:self.previewOptions error:nil];
+        self.previewCategory=nil; self.previewMode=nil;
+    }
+}
+- (BOOL)activatePreviewSession:(NSError **)error {
+    AVAudioSession *session=AVAudioSession.sharedInstance;
+    if (!self.previewCategory) { self.previewCategory=session.category; self.previewMode=session.mode; self.previewOptions=session.categoryOptions; }
+    return [session setCategory:AVAudioSessionCategoryPlayback mode:AVAudioSessionModeDefault options:AVAudioSessionCategoryOptionMixWithOthers error:error] && [session setActive:YES error:error];
+}
+- (void)stopTonePreview {
+    self.previewGeneration++; self.tonePreviewPlayer.delegate=nil; [self.tonePreviewPlayer stop];
+    self.tonePreviewPlayer=nil; self.previewIdentifier=nil;
+    [self restorePreviewSession]; [self updatePreviewButtons];
+}
+- (void)previewTone:(NSDictionary *)tone {
+    if (self.busy) return;
+    if ([self.previewIdentifier isEqual:tone[@"identifier"]] && self.tonePreviewPlayer) {
+        if (self.tonePreviewPlayer.playing) { [self.tonePreviewPlayer pause]; [self restorePreviewSession]; }
+        else {
+            NSError *error;
+            if (![self activatePreviewSession:&error] || ![self.tonePreviewPlayer play]) { [self stopTonePreview]; [self showError:error.localizedDescription ?: @"This ringtone could not be played."]; return; }
+        }
+        [self updatePreviewButtons]; return;
+    }
+    if ([self.previewIdentifier isEqual:tone[@"identifier"]]) { [self stopTonePreview]; return; }
+    [self stopTonePreview]; self.previewIdentifier=tone[@"identifier"];
+    NSUInteger generation=self.previewGeneration; [self updatePreviewButtons];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        NSDictionary *reply=[IPCenter() sendMessageAndReceiveReplyName:@"readTone" userInfo:@{@"identifier":tone[@"identifier"]}];
+        NSData *data=reply[@"data"];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation!=self.previewGeneration || ![self.previewIdentifier isEqual:tone[@"identifier"]]) return;
+            NSError *decodeError,*sessionError;
+            AVAudioPlayer *player=[reply[@"ok"] boolValue] && [data isKindOfClass:NSData.class] ? [[AVAudioPlayer alloc] initWithData:data error:&decodeError] : nil;
+            BOOL ready=player && [player prepareToPlay];
+            if (!ready || ![self activatePreviewSession:&sessionError]) { [self stopTonePreview]; [self showError:reply[@"error"] ?: decodeError.localizedDescription ?: sessionError.localizedDescription ?: @"This ringtone could not be played."]; return; }
+            self.tonePreviewPlayer=player; player.delegate=self;
+            if (![player play]) { [self stopTonePreview]; [self showError:@"This ringtone could not be played."]; return; }
+            [self updatePreviewButtons];
+        });
+    });
+}
+- (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)success {
+    if (player==self.tonePreviewPlayer) { [self stopTonePreview]; if (!success) [self showError:@"The ringtone preview could not finish playing."]; }
+}
+- (void)audioPlayerDecodeErrorDidOccur:(AVAudioPlayer *)player error:(NSError *)error {
+    if (player==self.tonePreviewPlayer) { [self stopTonePreview]; [self showError:error.localizedDescription ?: @"The ringtone could not be decoded."]; }
+}
+- (void)dealloc {
+    self.tonePreviewPlayer.delegate=nil; [self.tonePreviewPlayer stop]; [self restorePreviewSession];
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+}
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; _specifiers = nil; [self reloadSpecifiers]; }
 - (void)showError:(NSString *)message {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Importone" message:message preferredStyle:UIAlertControllerStyleAlert];
@@ -40,6 +120,7 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)performOperation:(NSString *)operation tone:(NSDictionary *)tone name:(NSString *)name {
+    [self stopTonePreview];
     if (self.busy) return;
     self.busy = YES; self.table.userInteractionEnabled = NO;
     NSMutableDictionary *info = [@{@"identifier":tone[@"identifier"]} mutableCopy];
@@ -89,6 +170,7 @@
     }];
 }
 - (void)cropTone:(NSDictionary *)tone {
+    [self stopTonePreview];
     if (self.busy) return;
     self.busy=YES; self.table.userInteractionEnabled=NO; [self setCropStep:@"Opening ringtone…"];
     NSURL *workspace=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
@@ -116,6 +198,7 @@
     });
 }
 - (void)renameTone:(NSDictionary *)tone {
+    [self stopTonePreview];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Rename Ringtone" message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field){ field.text = tone[@"name"]; field.clearButtonMode = UITextFieldViewModeWhileEditing; field.autocorrectionType = UITextAutocorrectionTypeNo; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -127,6 +210,7 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)removeTone:(NSDictionary *)tone {
+    [self stopTonePreview];
     if (self.busy) return;
     self.busy = YES; self.table.userInteractionEnabled = NO;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
@@ -145,6 +229,7 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)manageTone:(PSSpecifier *)specifier {
+    [self stopTonePreview];
     NSDictionary *tone = [specifier propertyForKey:@"importoneTone"];
     if (!tone || self.busy) return;
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:tone[@"name"] message:nil preferredStyle:UIAlertControllerStyleAlert];
@@ -170,6 +255,14 @@
         cell.accessoryView = nil;
         cell.accessoryType = UITableViewCellAccessoryNone;
         cell.textLabel.textAlignment = NSTextAlignmentNatural;
+        NSDictionary *tone=[specifier propertyForKey:@"importoneTone"];
+        if (tone) {
+            UIButton *play=[UIButton buttonWithType:UIButtonTypeSystem]; play.frame=CGRectMake(0,0,44,44);
+            [self configurePreviewButton:play tone:tone];
+            __weak IPRootListController *weakSelf=self;
+            [play addAction:[UIAction actionWithHandler:^(UIAction *action){ [weakSelf previewTone:tone]; }] forControlEvents:UIControlEventTouchUpInside];
+            cell.accessoryView=play;
+        }
     }
     return cell;
 }
@@ -189,6 +282,7 @@
     return configuration;
 }
 - (void)openSounds {
+    [self stopTonePreview];
     dlopen("/System/Library/PrivateFrameworks/Settings/SoundsAndHapticsSettings.framework/SoundsAndHapticsSettings", RTLD_NOW);
     Class soundsClass = NSClassFromString(@"SHSSoundsPrefController");
     if (self.navigationController && [soundsClass isSubclassOfClass:UIViewController.class]) {
