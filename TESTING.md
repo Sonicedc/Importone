@@ -22,7 +22,7 @@ Build/package verification on the development host does not substitute for these
 
 ## Non-presenting on-device UI integration probe
 
-`tests/UIProbe.m` is built separately from the package and verifies the activity accepts an audio URL, rejects a PDF, accepts an audio item provider, appears in a modern Share Sheet configuration, loads the actual Settings view, checks the 220-point rounded progress card, and verifies native custom-tone section rows and selection for six alert types. It does not present UI or replace the visual acceptance checks above.
+`tests/UIProbe.m` is built separately from the package and verifies the activity accepts an audio URL, rejects a PDF, accepts an audio item provider, appears in a modern Share Sheet configuration, loads the actual Settings view, checks the 220-point rounded progress card, and verifies native custom-tone section rows and selection for seven alert types. It does not present UI or replace the visual acceptance checks above.
 
 ## Custom tone management
 
@@ -31,3 +31,9 @@ Build/package verification on the development host does not substitute for these
 - Remove the disposable tone; verify both its native registration and stored audio disappear, while other tones remain.
 - Use Open Sounds & Haptics; verify the native settings controller opens with its ringtone and alert-tone links.
 - Run the on-device UI probe to check actual preference rows, swipe configurations, and native shortcut loading.
+
+## Assigned-tone deletion protection
+
+- Create a disposable tone named `Importone Guard Check` and run `tests/ToneUsageProbe.m` on-device. The probe temporarily assigns that tone to each of the seven native sound categories, verifies the service rejects removal, then restores all original assignments in a finally block. It removes only the unassigned disposable tone after restoration.
+- In Preferences, attempting removal of an assigned tone must show an error asking the user to select a replacement, without offering a delete confirmation. Confirm that unassigned tones still require confirmation.
+- The service repeats the assignment check at deletion time to cover changes made while a confirmation is open.

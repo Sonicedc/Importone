@@ -9,7 +9,7 @@ Importone_FRAMEWORKS = UIKit Foundation AVFoundation UniformTypeIdentifiers
 Importone_LIBRARIES = substrate
 include $(THEOS_MAKE_PATH)/tweak.mk
 TOOL_NAME = importoned
-importoned_FILES = Daemon/main.m Shared/Bridge.m Shared/Validation.m
+importoned_FILES = Daemon/main.m Shared/Bridge.m Shared/Validation.m Shared/ToneUsage.m
 importoned_CFLAGS = -fobjc-arc
 importoned_FRAMEWORKS = Foundation AVFoundation
 importoned_INSTALL_PATH = /usr/libexec

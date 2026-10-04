@@ -14,5 +14,8 @@ d.polygon([(282,466),(742,466),(758,661),(805,729),(219,729),(266,661)],fill='wh
 d.ellipse((453,744,571,856),fill='white')
 d.rounded_rectangle((654,264,894,504),65,fill=(41,34,96))
 d.polygon([(762,310),(786,310),(786,386),(811,361),(828,378),(774,432),(720,378),(737,361),(762,386)],fill='white')
+mask=Image.new('L',(n,n),0)
+ImageDraw.Draw(mask).rounded_rectangle((0,0,n-1,n-1),radius=220,fill=255)
+im=im.convert('RGBA'); im.putalpha(mask)
 for scale in (1,2,3): im.resize((29*scale,29*scale),Image.Resampling.LANCZOS).save(out/('icon.png' if scale==1 else f'icon@{scale}x.png'))
 im.save(out/'logo.png')

@@ -1,4 +1,5 @@
 #import "../Shared/Bridge.h"
+#import "../Shared/ToneUsage.h"
 #import <AVFoundation/AVFoundation.h>
 #import <dlfcn.h>
 #import <math.h>
@@ -52,6 +53,11 @@ static NSDictionary *IPManageTone(NSString *message, NSDictionary *info) {
     NSString *oldName = owned[@"name"], *identifier = owned[@"identifier"];
     NSString *source = [@"/var/lib/ringtones" stringByAppendingPathComponent:[oldName stringByAppendingPathExtension:@"m4r"]];
     NSFileManager *fm = NSFileManager.defaultManager;
+    if ([@[@"canRemove", @"remove"] containsObject:message]) {
+        NSString *reason = IPToneRemovalError(manager, identifier);
+        if (reason) return @{@"error":reason};
+        if ([message isEqual:@"canRemove"]) return @{@"ok":@YES};
+    }
     if ([message isEqual:@"remove"]) {
         [manager removeImportedToneWithIdentifier:identifier];
         [manager _reloadTonesAfterExternalChange];
@@ -95,9 +101,9 @@ static NSDictionary *IPManageTone(NSString *message, NSDictionary *info) {
 @end
 @implementation IPService
 - (NSDictionary *)receive:(NSString *)message userInfo:(NSDictionary *)info {
-    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.6"};
+    if ([message isEqual:@"ping"]) return @{@"ok":@YES, @"version":@"0.1.7"};
     if ([message isEqual:@"status"]) return ([info[@"job"] isKindOfClass:NSString.class] ? self.jobs[info[@"job"]] : nil) ?: @{@"done":@YES, @"ok":@NO, @"error":@"Import job expired."};
-    if ([@[@"list", @"rename", @"remove"] containsObject:message]) return IPManageTone(message, info);
+    if ([@[@"list", @"rename", @"remove", @"canRemove"] containsObject:message]) return IPManageTone(message, info);
     if (![message isEqual:@"import"]) return @{@"error":@"Unknown request."};
     if (!IPEnabled()) return @{@"error":@"Importone is disabled."};
     NSString *name = IPSafeName(info[@"name"]); NSData *data = info[@"data"];
@@ -176,6 +182,6 @@ int main(int argc, char **argv) { @autoreleasepool {
     [center registerForMessageName:@"ping" target:service selector:@selector(receive:userInfo:)];
     [center registerForMessageName:@"import" target:service selector:@selector(receive:userInfo:)];
     [center registerForMessageName:@"status" target:service selector:@selector(receive:userInfo:)];
-    for (NSString *message in @[@"list", @"rename", @"remove"]) [center registerForMessageName:message target:service selector:@selector(receive:userInfo:)];
+    for (NSString *message in @[@"list", @"rename", @"remove", @"canRemove"]) [center registerForMessageName:message target:service selector:@selector(receive:userInfo:)];
     [[NSRunLoop currentRunLoop] run];
 } return 0; }

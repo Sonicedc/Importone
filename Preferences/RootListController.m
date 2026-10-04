@@ -10,7 +10,7 @@
 - (NSArray *)specifiers {
     if (!_specifiers) {
         NSMutableArray *items = [[self loadSpecifiersFromPlistName:@"Root" target:self] mutableCopy];
-        NSUInteger position = [items indexOfObjectPassingTest:^BOOL(PSSpecifier *s, NSUInteger idx, BOOL *stop){ return [s.identifier isEqual:@"OpenSounds"]; }];
+        NSUInteger position = [items indexOfObjectPassingTest:^BOOL(PSSpecifier *s, NSUInteger idx, BOOL *stop){ return [s.identifier isEqual:@"SoundsShortcut"]; }];
         NSArray *tones = [NSArray arrayWithContentsOfFile:ROOT_PATH_NS(@"/var/mobile/Library/Importone/CustomTones.plist")] ?: @[];
         if (position != NSNotFound) {
             if (!tones.count) {
@@ -23,6 +23,7 @@
                 row.buttonAction = @selector(manageTone:);
                 row->action = @selector(manageTone:);
                 [row setProperty:tone forKey:@"importoneTone"];
+                [row setProperty:@64 forKey:@"height"];
                 [items insertObject:row atIndex:position++];
             }
         }
@@ -62,7 +63,19 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)removeTone:(NSDictionary *)tone {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Remove Ringtone?" message:[NSString stringWithFormat:@"Remove “%@” from your custom ringtones? If it is selected for a sound, choose a replacement in Sounds & Haptics.",tone[@"name"]] preferredStyle:UIAlertControllerStyleAlert];
+    if (self.busy) return;
+    self.busy = YES; self.table.userInteractionEnabled = NO;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        NSDictionary *reply = [IPCenter() sendMessageAndReceiveReplyName:@"canRemove" userInfo:@{@"identifier":tone[@"identifier"]}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.busy = NO; self.table.userInteractionEnabled = YES;
+            if (![reply[@"ok"] boolValue]) [self showError:reply[@"error"] ?: @"Importone could not check this ringtone’s sound assignments. Please try again."];
+            else [self confirmRemoveTone:tone];
+        });
+    });
+}
+- (void)confirmRemoveTone:(NSDictionary *)tone {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Remove Ringtone?" message:[NSString stringWithFormat:@"Remove “%@” from your custom ringtones?",tone[@"name"]] preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){ [self performOperation:@"remove" tone:tone name:nil]; }]];
     [self presentViewController:alert animated:YES completion:nil];
@@ -75,6 +88,27 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){ [self removeTone:tone]; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    if ([specifier propertyForKey:@"importoneTone"]) {
+        cell.textLabel.textColor = UIColor.labelColor;
+        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+        cell.textLabel.numberOfLines = 2;
+        cell.imageView.image = [UIImage systemImageNamed:@"bell.fill"];
+        cell.imageView.tintColor = [UIColor colorWithRed:0.48 green:0.35 blue:0.88 alpha:1];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.textLabel.textAlignment = NSTextAlignmentNatural;
+    } else if ([specifier.identifier isEqual:@"OpenSounds"]) {
+        cell.textLabel.textColor = UIColor.labelColor;
+        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+        cell.imageView.image = [UIImage systemImageNamed:@"speaker.wave.2.fill"];
+        cell.imageView.tintColor = [UIColor colorWithRed:0.48 green:0.35 blue:0.88 alpha:1];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.textLabel.textAlignment = NSTextAlignmentNatural;
+    }
+    return cell;
 }
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
     return !self.busy && [[self specifierAtIndexPath:indexPath] propertyForKey:@"importoneTone"] != nil;

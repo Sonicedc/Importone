@@ -36,7 +36,17 @@
 			<key>id</key>
 			<string>CustomTones</string>
 			<key>footerText</key>
-			<string>Swipe left on a tone to rename or remove it. Set your ringtone or alert tone in the native Settings → Sounds &amp; Haptics page.</string>
+			<string>Swipe left or tap a tone to rename or remove it. Tones assigned to a sound cannot be removed until you select a replacement.</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>id</key>
+			<string>SoundsShortcut</string>
+			<key>label</key>
+			<string>Sounds &amp; Haptics</string>
+			<key>footerText</key>
+			<string>Set your ringtone or alert tone in the native Sounds &amp; Haptics page.</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -98,7 +108,7 @@
 			<key>footerText</key>
 			<string>© 2026 Importone. All rights reserved.</string>
 			<key>label</key>
-			<string>Importone 0.1.6</string>
+			<string>Importone 0.1.7</string>
 		</dict>
 	</array>
 	<key>title</key>
