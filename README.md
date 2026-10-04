@@ -12,21 +12,21 @@ A rootless iOS jailbreak tweak that imports custom ringtones from the Share Shee
 4. Tap **Importone**. Audio is checked, then converted to MPEG-4 audio with an `.m4r` extension if needed.
 5. Rename it and tap **Import**. Select the registered tone in **Settings → Sounds & Haptics → Ringtone**.
 
-The import sheet displays a blurred background, centered circular activity indicator, step text, and conversion progress. The credits match the supplied CarCanvas reference: Sonicedc, GitHub Repository, and Licenses. The GitHub button targets `https://github.com/Sonicedc/Importone`; publication is pending authentication.
+The import sheet displays a blurred background, centered circular activity indicator, step text, and conversion progress. The credits match the supplied CarCanvas reference: Sonicedc, GitHub Repository, and Licenses. The GitHub button targets `https://github.com/Sonicedc/Importone`; the repository is public.
 
 ## Compatibility and boundaries
 
-- Build target: iOS 15+, arm64/arm64e, rootless (`iphoneos-arm64`). Device compatibility has **not yet been verified**.
-- Requires a tweak loader (e.g. ElleKit), PreferenceLoader, and RocketBootstrap with support for the target jailbreak.
+- Build target: iOS 15+, arm64/arm64e, Dopamine rootless (`iphoneos-arm64`). Installation targets iOS 16.2; end-to-end Share Sheet testing is still required.
+- Requires a tweak loader (e.g. ElleKit), PreferenceLoader. The IPC bridge uses Dopamine’s read/write sandbox extension for `/var/jb/var/mobile`; RocketBootstrap is not required.
 - One local audio file per import; ordinary web links, raw audio data, and item-provider-only share payloads are not currently supported.
 - Source limit: 100 MB. Result limit: 10 MB. Maximum duration: 40 seconds. Longer audio is rejected without silently trimming it.
 - AVFoundation-supported audio formats only; video and protected audio are rejected. An existing `.m4r` must contain MPEG-4 audio.
 - Duplicate names are rejected; names cannot contain directory separators, colons, or control characters.
 - Disable applies to new share sheets and new service requests. An import already submitted to iOS can finish.
 - The service stores the named file in **`/var/lib/ringtones`**. `/Library/Ringtones` belongs to the sealed root on rootless installations. ToneLibrary creates its own registered copy and manifest; merely copying an `.m4r` does not make iOS list it.
-- ToneLibrary is a private API. Its import payload, metadata, completion signature, and service permissions require verification on the actual target iOS/jailbreak. A successful build does not establish runtime compatibility. Missing API / Objective-C exceptions / reported import errors are surfaced to the user.
+- ToneLibrary is a private API. Its import payload, metadata, completion signature, and service permissions vary across iOS versions. The callback’s first parameter is a BOOL, confirmed on the target iOS 16.2 device. A successful build does not establish runtime compatibility. Missing API / Objective-C exceptions / reported import errors are surfaced to the user.
 - Failed registrations remove the staging ringtone. Uninstallation preserves imported files and tones registered with iOS.
-- The daemon runs as `mobile`, uses a sandbox bridge, and accepts bounded audio bytes and a validated basename rather than caller-selected filesystem paths. Any process able to access the bridge can request imports; this is not an authenticated per-app service.
+- The daemon runs as `mobile`, uses a binary-plist file queue in `/var/jb/var/mobile/Library/Importone/IPC`, and accepts bounded audio bytes and a validated basename rather than caller-selected filesystem paths. Any mobile-user process able to access the queue can request imports; this is not an authenticated per-app service.
 
 ## Build
 
@@ -46,14 +46,13 @@ Before a release, run the checklist in [TESTING.md](TESTING.md). In particular, 
 
 ## GitHub
 
-After authenticating:
+[Public source repository](https://github.com/Sonicedc/Importone).
 
 ```sh
-gh auth login --hostname github.com
-gh repo create Sonicedc/Importone --private --source=. --remote=origin --push
+git clone https://github.com/Sonicedc/Importone.git
+cd Importone
+./build.sh
 ```
-
-Use `--public` instead of `--private` if desired. No repository has been created by the build.
 
 ## Credits
 

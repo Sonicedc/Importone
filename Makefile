@@ -6,14 +6,12 @@ TWEAK_NAME = Importone
 Importone_FILES = Tweak.xm ImportActivity.m Shared/Bridge.m Shared/Validation.m
 Importone_CFLAGS = -fobjc-arc
 Importone_FRAMEWORKS = UIKit Foundation AVFoundation UniformTypeIdentifiers
-Importone_PRIVATE_FRAMEWORKS = AppSupport
 Importone_LIBRARIES = substrate
 include $(THEOS_MAKE_PATH)/tweak.mk
 TOOL_NAME = importoned
 importoned_FILES = Daemon/main.m Shared/Bridge.m Shared/Validation.m
 importoned_CFLAGS = -fobjc-arc
 importoned_FRAMEWORKS = Foundation AVFoundation
-importoned_PRIVATE_FRAMEWORKS = AppSupport
 importoned_INSTALL_PATH = /usr/libexec
 importoned_CODESIGN_FLAGS = -SDaemon/entitlements.plist
 include $(THEOS_MAKE_PATH)/tool.mk

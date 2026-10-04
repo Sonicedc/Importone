@@ -94,7 +94,7 @@
             NSData *data = [NSData dataWithContentsOfURL:self.converted];
             NSDictionary *reply = data ? [IPCenter() sendMessageAndReceiveReplyName:@"import" userInfo:@{@"name":name, @"data":data}] : nil;
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (![reply[@"ok"] boolValue]) { [self fail:reply[@"error"] ?: @"The import service is unavailable. Check RocketBootstrap and reinstall Importone."]; return; }
+                if (![reply[@"ok"] boolValue]) { [self fail:reply[@"error"] ?: @"The import service is unavailable. Restart the app and reinstall Importone if needed."]; return; }
                 self.step.text = @"Registering with iOS…";
                 __block NSUInteger polls = 0;
                 self.timer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer){
