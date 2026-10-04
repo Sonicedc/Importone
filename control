@@ -1,0 +1,9 @@
+Package: com.sonicedc.importone
+Name: Importone
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Import audio from the share sheet as custom ringtones, entirely on-device.
+Maintainer: Sonicedc
+Author: Sonicedc
+Section: Tweaks
+Depends: firmware (>= 15.0), mobilesubstrate, preferenceloader, com.rpetrich.rocketbootstrap

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+mkdir -p /var/lib/ringtones
+chown mobile:mobile /var/lib/ringtones
+chmod 0755 /var/lib/ringtones
+launchctl bootout system /var/jb/Library/LaunchDaemons/com.sonicedc.importoned.plist 2>/dev/null || true
+launchctl bootstrap system /var/jb/Library/LaunchDaemons/com.sonicedc.importoned.plist
+exit 0

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>Share one audio file, choose Importone, then name your ringtone. Maximum length: 40 seconds.</string>
+			<key>label</key>
+			<string>Importone</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.sonicedc.importone</string>
+			<key>get</key>
+			<string>readPreferenceValue:</string>
+			<key>key</key>
+			<string>Enabled</string>
+			<key>label</key>
+			<string>Enabled</string>
+			<key>set</key>
+			<string>setPreferenceValue:specifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>Credits</string>
+		</dict>
+		<dict>
+			<key>action</key>
+			<string>openSonicedc</string>
+			<key>cell</key>
+			<string>PSButtonCell</string>
+			<key>cellClass</key>
+			<string>IPCreditCell</string>
+			<key>credit</key>
+			<string>sonicedc</string>
+			<key>height</key>
+			<integer>56</integer>
+			<key>label</key>
+			<string>Sonicedc</string>
+		</dict>
+		<dict>
+			<key>action</key>
+			<string>openRepository</string>
+			<key>cell</key>
+			<string>PSButtonCell</string>
+			<key>cellClass</key>
+			<string>IPCreditCell</string>
+			<key>credit</key>
+			<string>github</string>
+			<key>height</key>
+			<integer>56</integer>
+			<key>label</key>
+			<string>GitHub Repository</string>
+		</dict>
+		<dict>
+			<key>action</key>
+			<string>openLicenses</string>
+			<key>cell</key>
+			<string>PSButtonCell</string>
+			<key>label</key>
+			<string>Licenses</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>© 2026 Importone. All rights reserved.</string>
+			<key>label</key>
+			<string>Importone 0.1.0</string>
+		</dict>
+	</array>
+	<key>title</key>
+	<string>Importone</string>
+</dict>
+</plist>
