@@ -8,7 +8,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>Share one audio file, choose Importone, then name your ringtone. Maximum length: 40 seconds.</string>
+			<string>Share one audio file, choose Importone, then name your ringtone. Audio over 40 seconds opens the waveform crop editor.</string>
 			<key>label</key>
 			<string>Importone</string>
 		</dict>
@@ -108,7 +108,7 @@
 			<key>footerText</key>
 			<string>© 2026 Importone. All rights reserved.</string>
 			<key>label</key>
-			<string>Importone 0.1.8</string>
+			<string>Importone 0.2.0</string>
 		</dict>
 	</array>
 	<key>title</key>

@@ -1,4 +1,5 @@
 #import "ImportActivity.h"
+#import "CropController.h"
 #import "Shared/Bridge.h"
 #import <AVFoundation/AVFoundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -102,29 +103,49 @@
     }];
     if (scoped) [self.source stopAccessingSecurityScopedResource];
     if (error || copyError) { [self fail:(error ?: copyError).localizedDescription]; return; }
-    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:local options:nil];
+    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:local options:@{AVURLAssetPreferPreciseDurationAndTimingKey:@YES}];
     [asset loadValuesAsynchronouslyForKeys:@[@"tracks", @"duration", @"exportable"] completionHandler:^{
         dispatch_async(dispatch_get_main_queue(), ^{
             NSError *loadError;
             for (NSString *key in @[@"tracks", @"duration", @"exportable"]) if ([asset statusOfValueForKey:key error:&loadError] != AVKeyValueStatusLoaded) { [self fail:loadError.localizedDescription ?: @"Cannot read this file."]; return; }
             double seconds = CMTimeGetSeconds(asset.duration);
             if (![asset tracksWithMediaType:AVMediaTypeAudio].count || [asset tracksWithMediaType:AVMediaTypeVideo].count || !isfinite(seconds) || seconds <= 0 || asset.hasProtectedContent) { [self fail:@"Choose a readable, unprotected audio file. Video files are not supported."]; return; }
-            if (seconds > 40.05) { [self fail:@"Ringtones can be at most 40 seconds. Trim this audio and share it again."]; return; }
+            if (seconds > 40) {
+                self.step.text = @"Choose a 40-second selection"; [self.spinner stopAnimating];
+                IPCropController *crop = [[IPCropController alloc] initWithAsset:asset];
+                __weak IPImportController *weakSelf = self;
+                crop.completion = ^(BOOL accepted, CMTimeRange range){
+                    IPImportController *controller = weakSelf;
+                    if (!accepted) { [controller finish:NO]; return; }
+                    [controller convertAsset:asset range:range];
+                };
+                UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:crop];
+                navigation.modalPresentationStyle = UIModalPresentationPageSheet; navigation.modalInPresentation = YES;
+                navigation.sheetPresentationController.detents = @[UISheetPresentationControllerDetent.mediumDetent, UISheetPresentationControllerDetent.largeDetent];
+                navigation.sheetPresentationController.prefersGrabberVisible = YES;
+                [self presentViewController:navigation animated:YES completion:nil];
+                return;
+            }
             if ([local.pathExtension.lowercaseString isEqual:@"m4r"]) { self.converted = local; [self rename]; return; }
-            self.step.text = @"Converting to .m4r…";
-            self.exporter = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
-            if (!self.exporter || ![self.exporter.supportedFileTypes containsObject:AVFileTypeAppleM4A]) { [self fail:@"This audio format cannot be converted on this device."]; return; }
-            self.converted = [self.workspace URLByAppendingPathComponent:@"converted.m4r"];
-            self.exporter.outputURL = self.converted; self.exporter.outputFileType = AVFileTypeAppleM4A;
-            self.timer = [NSTimer scheduledTimerWithTimeInterval:0.15 repeats:YES block:^(NSTimer *timer){ self.progress.progress = self.exporter.progress; }];
-            [self.exporter exportAsynchronouslyWithCompletionHandler:^{ dispatch_async(dispatch_get_main_queue(), ^{
-                [self.timer invalidate]; self.timer = nil;
-                if (self.exporter.status != AVAssetExportSessionStatusCompleted) { [self fail:self.exporter.error.localizedDescription ?: @"Conversion failed."]; return; }
-                [self rename];
-            }); }];
+            [self convertAsset:asset range:kCMTimeRangeInvalid];
         });
     }];
     });
+}
+- (void)convertAsset:(AVAsset *)asset range:(CMTimeRange)range {
+    self.step.text = CMTIMERANGE_IS_VALID(range) ? @"Cropping and converting to .m4r…" : @"Converting to .m4r…";
+    self.progress.progress = 0; [self.spinner startAnimating];
+    self.exporter = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
+    if (!self.exporter || ![self.exporter.supportedFileTypes containsObject:AVFileTypeAppleM4A]) { [self fail:@"This audio format cannot be converted on this device."]; return; }
+    if (CMTIMERANGE_IS_VALID(range)) self.exporter.timeRange = range;
+    self.converted = [self.workspace URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"m4r"]];
+    self.exporter.outputURL = self.converted; self.exporter.outputFileType = AVFileTypeAppleM4A;
+    self.timer = [NSTimer scheduledTimerWithTimeInterval:0.15 repeats:YES block:^(NSTimer *timer){ self.progress.progress = self.exporter.progress; }];
+    [self.exporter exportAsynchronouslyWithCompletionHandler:^{ dispatch_async(dispatch_get_main_queue(), ^{
+        [self.timer invalidate]; self.timer = nil;
+        if (self.exporter.status != AVAssetExportSessionStatusCompleted) { [self fail:self.exporter.error.localizedDescription ?: @"Conversion failed."]; return; }
+        [self rename];
+    }); }];
 }
 - (void)rename {
     self.step.text = @"Name your ringtone"; self.progress.progress = 1; [self.spinner stopAnimating];

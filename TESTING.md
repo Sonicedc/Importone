@@ -37,3 +37,11 @@ Build/package verification on the development host does not substitute for these
 - Create a disposable tone named `Importone Guard Check` and run `tests/ToneUsageProbe.m` on-device. The probe temporarily assigns that tone to each of the seven native sound categories, verifies the service rejects removal, then restores all original assignments in a finally block. It removes only the unassigned disposable tone after restoration.
 - In Preferences, attempting removal of an assigned tone must show an error asking the user to select a replacement, without offering a delete confirmation. Confirm that unassigned tones still require confirmation.
 - The service repeats the assignment check at deletion time to cover changes made while a confirmation is open.
+
+## Waveform cropping
+
+- Share audio longer than 40 seconds, including an existing .m4r. The crop sheet must open before naming the tone. Short audio keeps the direct import flow.
+- Swipe the waveform to move a fixed 40-second range. Verify both ends stop at the source boundaries. Hold either bracket for an 8-second precision view, drag to fine-tune, and release to zoom out.
+- Preview the selection; verify it stops at the end, stops when the selection moves, and stops on cancel or Use Selection.
+- Run `tests/CropProbe.m` with synthetic long audio. It checks the actual long-file handoff, decoded peaks, both gesture mappings, muted preview, export range and decoded duration, rename handoff, and cancellation cleanup. Test WAV and .m4r at normal and low sample rates.
+- AAC container duration can differ slightly from the decoded sample duration at low sample rates. Check decoded duration and keep the native asset duration within the service limit.
